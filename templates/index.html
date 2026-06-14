@@ -442,7 +442,7 @@
   <!-- Morning Setup Card -->
   <div class="card" style="margin-bottom:16px" id="morning-card">
     <div class="card-header">
-      <span class="card-title">⏰ SPY — Bullish Setup (5m)</span>
+      <span class="card-title">⏰ SPY <span id="morning-price" style="color:#6b7280;font-weight:400"></span> — Bullish Setup (5m)</span>
       <span id="morning-window-badge" style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:#111;color:#4b5563;border:1px solid #374151">Outside Window</span>
     </div>
     <div class="score-section">
@@ -469,7 +469,7 @@
   <!-- 3pm Bearish Setup Card -->
   <div class="card" style="margin-bottom:16px" id="afternoon-card">
     <div class="card-header">
-      <span class="card-title">🔻 SPY — 3pm Bearish Setup (5m)</span>
+      <span class="card-title">🔻 SPY <span id="afternoon-price" style="color:#6b7280;font-weight:400"></span> — 3pm Bearish Setup (5m)</span>
       <span id="afternoon-window-badge" style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:#111;color:#4b5563;border:1px solid #374151">Outside Window</span>
     </div>
     <div class="score-section">
@@ -706,7 +706,7 @@ function renderBullishWatch(watchMap) {
     container.innerHTML += `
       <div class="card" style="margin-bottom:16px">
         <div class="card-header">
-          <span class="card-title">⏰ ${sym} — Bullish Setup (5m)</span>
+          <span class="card-title">⏰ ${sym} ${data.price ? '<span style="color:#6b7280;font-weight:400">$' + data.price.toFixed(2) + '</span>' : ''} — Bullish Setup (5m)</span>
           <span style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:${bs.bg};color:${bs.color};border:1px solid ${bs.border}">${wl}</span>
         </div>
         <div class="score-section">
@@ -773,7 +773,7 @@ function renderBearishWatch(watchMap) {
     container.innerHTML += `
       <div class="card" style="margin-bottom:16px">
         <div class="card-header">
-          <span class="card-title">🔻 ${sym} — 3pm Bearish Setup (5m)</span>
+          <span class="card-title">🔻 ${sym} ${data.price ? '<span style="color:#6b7280;font-weight:400">$' + data.price.toFixed(2) + '</span>' : ''} — 3pm Bearish Setup (5m)</span>
           <span style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:${bs.bg};color:${bs.color};border:1px solid ${bs.border}">${wl}</span>
         </div>
         <div class="score-section">
@@ -919,6 +919,10 @@ async function loadData() {
       replayBanner.style.display = 'none';
     }
 
+    if (data.spy_price) {
+      document.getElementById('morning-price').textContent = '$' + data.spy_price.toFixed(2);
+      document.getElementById('afternoon-price').textContent = '$' + data.spy_price.toFixed(2);
+    }
     renderMorningSetup(data.morning_setup);
     renderBullishWatch(data.bullish_watch || {});
     renderAfternoonSetup(data.afternoon_setup);

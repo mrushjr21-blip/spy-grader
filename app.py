@@ -463,12 +463,16 @@ def grade():
         bearish_watch = {}
         for sym, df_raw in bearish_5m.items():
             sym_5m = add_indicators_5m(df_raw[df_raw.index.date == target_date].copy())
-            bearish_watch[sym] = score_afternoon_setup(sym_5m)
+            result = score_afternoon_setup(sym_5m)
+            result["price"] = round(float(sym_5m["close"].iloc[-1]), 2) if len(sym_5m) else None
+            bearish_watch[sym] = result
 
         bullish_watch = {}
         for sym, df_raw in bullish_5m.items():
             sym_5m = add_indicators_5m(df_raw[df_raw.index.date == target_date].copy())
-            bullish_watch[sym] = score_morning_setup(sym_5m)
+            result = score_morning_setup(sym_5m)
+            result["price"] = round(float(sym_5m["close"].iloc[-1]), 2) if len(sym_5m) else None
+            bullish_watch[sym] = result
 
         if afternoon["score"] >= 75 and afternoon["window_quality"] == "prime":
             overall_direction = "bearish"
