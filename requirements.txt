@@ -1,0 +1,7 @@
+flask>=3.0
+alpaca-py>=0.26
+pandas>=2.0
+numpy>=1.26
+python-dotenv>=1.0
+pytz>=2024.1
+gunicorn>=21.0

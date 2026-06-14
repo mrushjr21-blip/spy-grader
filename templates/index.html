@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPY Setup Grader</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0b0b0f;
+    color: #d1d5db;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    background: #111118;
+    border-bottom: 1px solid #1f2028;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .header-left { display: flex; align-items: baseline; gap: 16px; }
+
+  .app-title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #6b7280;
+  }
+
+  #spy-price {
+    font-size: 28px;
+    font-weight: 700;
+    color: #f9fafb;
+    letter-spacing: -0.02em;
+  }
+
+  .header-right { display: flex; align-items: center; gap: 16px; }
+
+  #timestamp {
+    font-size: 12px;
+    color: #6b7280;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .market-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 3px 10px;
+    border-radius: 20px;
+  }
+
+  .market-badge.open  { background: #052e16; color: #4ade80; border: 1px solid #166534; }
+  .market-badge.closed { background: #1c1c1c; color: #6b7280; border: 1px solid #374151; }
+  .market-badge .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .market-badge.open .dot  { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
+  .market-badge.closed .dot { background: #6b7280; }
+
+  #refresh-btn {
+    background: #1e1e2e;
+    border: 1px solid #2d2d3d;
+    color: #9ca3af;
+    padding: 5px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s;
+  }
+  #refresh-btn:hover { background: #2a2a3e; color: #d1d5db; }
+
+  /* ── Main layout ── */
+  main { padding: 24px; max-width: 1100px; margin: 0 auto; }
+
+  /* ── Error banner ── */
+  #error-banner {
+    background: #2d0f0f;
+    border: 1px solid #7f1d1d;
+    color: #fca5a5;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    display: none;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* ── Pattern cards ── */
+  .cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  @media (max-width: 780px) { .cards { grid-template-columns: 1fr; } }
+
+  .card {
+    background: #111118;
+    border: 1px solid #1f2028;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .card-header {
+    padding: 14px 18px 10px;
+    border-bottom: 1px solid #1a1a24;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .card-title { font-size: 13px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.08em; }
+
+  .direction-badge {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 3px 10px;
+    border-radius: 20px;
+  }
+  .direction-badge.bullish  { background: #052e16; color: #4ade80; border: 1px solid #166534; }
+  .direction-badge.bearish  { background: #2d0f0f; color: #f87171; border: 1px solid #7f1d1d; }
+  .direction-badge.neutral  { background: #1c1c2e; color: #818cf8; border: 1px solid #3730a3; }
+  .direction-badge.no-signal { background: #1a1a1a; color: #6b7280; border: 1px solid #374151; }
+
+  /* Score section */
+  .score-section { padding: 14px 18px 12px; border-bottom: 1px solid #1a1a24; }
+
+  .score-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .score-number {
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .score-max { font-size: 16px; color: #4b5563; font-weight: 400; }
+
+  .score-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  /* Score colors */
+  .score-clean    { color: #4ade80; }
+  .score-moderate { color: #facc15; }
+  .score-weak     { color: #f97316; }
+  .score-none     { color: #4b5563; }
+
+  .label-clean    { background: #052e16; color: #4ade80; }
+  .label-moderate { background: #2d2000; color: #facc15; }
+  .label-weak     { background: #1f1000; color: #f97316; }
+  .label-none     { background: #1a1a1a; color: #6b7280; }
+
+  /* Progress bar */
+  .progress-track {
+    height: 5px;
+    background: #1f2028;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+  }
+
+  .fill-clean    { background: #4ade80; }
+  .fill-moderate { background: #facc15; }
+  .fill-weak     { background: #f97316; }
+  .fill-none     { background: #374151; }
+
+  /* Criteria list */
+  .criteria-section { padding: 12px 18px; border-bottom: 1px solid #1a1a24; }
+
+  .criteria-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 0;
+    font-size: 12.5px;
+  }
+
+  .crit-icon {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+  }
+  .crit-pass { background: #052e16; color: #4ade80; border: 1px solid #166534; }
+  .crit-fail { background: #1f1010; color: #6b7280; border: 1px solid #374151; }
+
+  .crit-label { flex: 1; color: #9ca3af; }
+  .crit-label.pass { color: #d1d5db; }
+
+  .crit-pts {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: #4b5563;
+    width: 36px;
+    text-align: right;
+  }
+  .crit-pts.earned { color: #6b7280; }
+
+  /* Values table */
+  .values-section { padding: 12px 18px; }
+  .values-title { font-size: 11px; color: #4b5563; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+
+  .values-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 6px 12px;
+  }
+
+  .value-item { display: flex; justify-content: space-between; }
+  .value-key { color: #4b5563; font-size: 11.5px; }
+  .value-val { color: #d1d5db; font-size: 11.5px; font-variant-numeric: tabular-nums; font-weight: 500; }
+
+  /* ── Overall summary ── */
+  .summary-card {
+    background: #111118;
+    border: 1px solid #1f2028;
+    border-radius: 12px;
+    padding: 18px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .summary-left { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+
+  .summary-label { font-size: 11px; color: #4b5563; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+
+  .overall-direction {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .overall-direction.bullish  { color: #4ade80; }
+  .overall-direction.bearish  { color: #f87171; }
+  .overall-direction.neutral  { color: #818cf8; }
+  .overall-direction.conflicting { color: #f97316; }
+
+  .divider { width: 1px; height: 40px; background: #1f2028; }
+
+  .combined-score-wrap { text-align: center; }
+  .combined-number {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Disclaimer ── */
+  /* ── Scanner ── */
+  .scanner-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 24px 0 12px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #6b7280;
+  }
+
+  .scanner-meta { font-size: 12px; color: #4b5563; margin-left: 10px; }
+
+  #scan-btn {
+    background: #1e2a3a;
+    border: 1px solid #2d4a6a;
+    color: #60a5fa;
+    padding: 6px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.15s;
+  }
+  #scan-btn:hover { background: #243448; }
+  #scan-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .scan-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .scan-table th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #4b5563;
+    border-bottom: 1px solid #1f2028;
+  }
+
+  .scan-table td {
+    padding: 9px 12px;
+    border-bottom: 1px solid #141420;
+    vertical-align: middle;
+  }
+
+  .scan-table tbody tr:hover { background: #13131e; }
+
+  .sym-cell { font-weight: 700; color: #f9fafb; font-size: 14px; }
+  .price-cell { color: #9ca3af; font-variant-numeric: tabular-nums; }
+
+  .mini-score {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mini-score-num {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    width: 28px;
+    text-align: right;
+  }
+  .mini-bar-track { width: 60px; height: 4px; background: #1f2028; border-radius: 2px; overflow: hidden; }
+  .mini-bar-fill  { height: 100%; border-radius: 2px; }
+
+  .status-badge {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 3px 8px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+  .status-triggered   { background: #052e16; color: #4ade80; border: 1px solid #166534; }
+  .status-approaching { background: #1a1020; color: #c084fc; border: 1px solid #6b21a8; }
+  .status-no_signal   { background: #111; color: #4b5563; border: 1px solid #374151; }
+
+  #scan-loading {
+    text-align: center;
+    padding: 32px;
+    color: #4b5563;
+    font-size: 13px;
+  }
+
+  .scan-error {
+    background: #2d0f0f;
+    border: 1px solid #7f1d1d;
+    color: #fca5a5;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+  }
+
+  .disclaimer {
+    background: #0e0e18;
+    border: 1px solid #1f2028;
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 11.5px;
+    color: #4b5563;
+    line-height: 1.6;
+  }
+  .disclaimer strong { color: #6b7280; }
+
+  /* ── Loading skeleton ── */
+  .skeleton {
+    background: linear-gradient(90deg, #1a1a24 25%, #1f2030 50%, #1a1a24 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite;
+    border-radius: 4px;
+    height: 14px;
+  }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+  #countdown { font-size: 11px; color: #4b5563; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <span class="app-title">SPY Setup Grader</span>
+    <span id="spy-price">—</span>
+  </div>
+  <div class="header-right">
+    <span id="countdown"></span>
+    <span id="timestamp">—</span>
+    <span id="market-badge" class="market-badge closed"><span class="dot"></span> Closed</span>
+    <button id="refresh-btn" onclick="loadData()">↺ Refresh</button>
+  </div>
+</header>
+
+<main>
+  <div id="error-banner"></div>
+  <div id="replay-banner" style="display:none;background:#1a1200;border:1px solid #78350f;color:#fbbf24;padding:10px 16px;border-radius:8px;margin-bottom:16px;font-size:12.5px;">
+    ⏪ <strong>Replay mode</strong> — market is closed. Showing end-of-day snapshot from <span id="replay-date"></span>. Live data resumes at 9:30 AM ET.
+  </div>
+
+  <!-- Morning Setup Card -->
+  <div class="card" style="margin-bottom:16px" id="morning-card">
+    <div class="card-header">
+      <span class="card-title">⏰ SPY — Bullish Setup (5m)</span>
+      <span id="morning-window-badge" style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:#111;color:#4b5563;border:1px solid #374151">Outside Window</span>
+    </div>
+    <div class="score-section">
+      <div class="score-row">
+        <div>
+          <span class="score-number score-none" id="morning-score">—</span>
+          <span class="score-max">/100</span>
+        </div>
+        <span class="score-label label-none" id="morning-label">Loading…</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill fill-none" id="morning-bar" style="width:0%"></div></div>
+    </div>
+    <div id="morning-alert" style="display:none;margin:0 18px 12px;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:600;text-align:center"></div>
+    <div id="morning-vol-warning" style="display:none;padding:6px 18px 10px;color:#4b5563;font-size:11.5px">
+      Note: signal bar volume &lt;0.8× avg — secondary indicator only.
+    </div>
+    <div class="criteria-section" id="morning-criteria"></div>
+    <div class="values-section" id="morning-values"></div>
+  </div>
+
+  <!-- Bullish watch symbols (MU, NVDA) -->
+  <div id="bullish-watch-cards"></div>
+
+  <!-- 3pm Bearish Setup Card -->
+  <div class="card" style="margin-bottom:16px" id="afternoon-card">
+    <div class="card-header">
+      <span class="card-title">🔻 SPY — 3pm Bearish Setup (5m)</span>
+      <span id="afternoon-window-badge" style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:#111;color:#4b5563;border:1px solid #374151">Outside Window</span>
+    </div>
+    <div class="score-section">
+      <div class="score-row">
+        <div>
+          <span class="score-number score-none" id="afternoon-score">—</span>
+          <span class="score-max">/100</span>
+        </div>
+        <span class="score-label label-none" id="afternoon-label">Loading…</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill fill-none" id="afternoon-bar" style="width:0%"></div></div>
+    </div>
+    <div id="afternoon-alert" style="display:none;margin:0 18px 12px;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:600;text-align:center"></div>
+    <div id="afternoon-vol-warning" style="display:none;padding:6px 18px 10px;color:#4b5563;font-size:11.5px">
+      Note: signal bar volume &lt;0.8× avg — secondary indicator only.
+    </div>
+    <div class="criteria-section" id="afternoon-criteria"></div>
+    <div class="values-section" id="afternoon-values"></div>
+  </div>
+
+  <!-- Bearish watch symbols (AMD) -->
+  <div id="bearish-watch-cards"></div>
+
+  <div class="summary-card">
+    <div class="summary-left">
+      <div>
+        <div class="summary-label">Bias</div>
+        <div class="overall-direction neutral" id="overall-dir">—</div>
+      </div>
+      <div class="divider"></div>
+      <div>
+        <div class="summary-label">Option Lean</div>
+        <div class="overall-direction neutral" id="overall-option">—</div>
+      </div>
+      <div class="divider"></div>
+      <div class="combined-score-wrap">
+        <div class="summary-label">Setup Clarity</div>
+        <div class="combined-number score-none" id="combined-score">—<span style="font-size:16px;color:#4b5563">/100</span></div>
+      </div>
+      <div>
+        <span class="score-label label-none" id="combined-label">—</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="disclaimer">
+    <strong>What this score means:</strong> Reflects how cleanly the most recent 5-minute bar matches all 4 setup conditions —
+    engulfing candle, SMA10 cross, MACD curl, and double bottom. A full 100/100 in the 10–11am prime window has historically
+    been correct ~62–68% of the time. Always apply your own judgment and risk management.
+  </div>
+</main>
+
+<script>
+let countdown = 60;
+let countdownTimer = null;
+
+function scoreClass(s) {
+  if (s >= 80) return 'clean';
+  if (s >= 60) return 'moderate';
+  if (s >= 40) return 'weak';
+  return 'none';
+}
+
+function scoreLabel(s, detected) {
+  if (!detected) return 'No Signal';
+  if (s >= 80) return 'Clean';
+  if (s >= 60) return 'Developing';
+  if (s >= 40) return 'Weak';
+  return 'No Signal';
+}
+
+function renderOverall(data) {
+  const dirLabels = {
+    bullish:    { text: 'Bullish',    option: '→ Calls', cls: 'bullish' },
+    bearish:    { text: 'Bearish',    option: '→ Puts',  cls: 'bearish' },
+    conflicting:{ text: 'Conflicting',option: '⚡ Mixed', cls: 'conflicting' },
+    neutral:    { text: 'Neutral',    option: '— None',  cls: 'neutral' },
+  };
+
+  const d = dirLabels[data.overall_direction] || dirLabels['neutral'];
+  const dirEl = document.getElementById('overall-dir');
+  dirEl.textContent = d.text;
+  dirEl.className = `overall-direction ${d.cls}`;
+
+  const optEl = document.getElementById('overall-option');
+  optEl.textContent = d.option;
+  optEl.className = `overall-direction ${d.cls}`;
+
+  const cls = scoreClass(data.score);
+  const combEl = document.getElementById('combined-score');
+  combEl.innerHTML = `${data.score}<span style="font-size:16px;color:#4b5563">/100</span>`;
+  combEl.className = `combined-number score-${cls}`;
+
+  const lbl = scoreLabel(data.score, data.morning_setup.detected || (data.afternoon_setup && data.afternoon_setup.detected));
+  document.getElementById('combined-label').textContent = lbl;
+  document.getElementById('combined-label').className = `score-label label-${cls}`;
+}
+
+function renderMorningSetup(data) {
+  if (!data) return;
+
+  // Window badge — color-coded by backtest quality
+  const badge = document.getElementById('morning-window-badge');
+  const wq = data.window_quality || 'outside';
+  const wl = data.window_label   || 'Outside market hours';
+  const badgeStyles = {
+    prime:    { bg: '#052e16', color: '#4ade80', border: '#166534' },
+    marginal: { bg: '#1a1200', color: '#fbbf24', border: '#78350f' },
+    neutral:  { bg: '#111',    color: '#9ca3af', border: '#374151' },
+    avoid:    { bg: '#111',    color: '#4b5563', border: '#374151' },
+    outside:  { bg: '#111',    color: '#4b5563', border: '#374151' },
+  };
+  const bs = badgeStyles[wq] || badgeStyles['outside'];
+  badge.textContent = wl;
+  badge.style.background   = bs.bg;
+  badge.style.color        = bs.color;
+  badge.style.borderColor  = bs.border;
+
+  // Score bar
+  const cls = scoreClass(data.score);
+  document.getElementById('morning-score').textContent = data.score;
+  document.getElementById('morning-score').className = `score-number score-${cls}`;
+  document.getElementById('morning-bar').style.width = data.score + '%';
+  document.getElementById('morning-bar').className = `progress-fill fill-${cls}`;
+
+  // Label
+  const lbl = data.detected ? '✓ All 4 Conditions Met' :
+               data.score >= 75 ? '3 of 4 Conditions Met' :
+               data.score >= 50 ? '2 of 4 Conditions Met' :
+               data.score >= 25 ? 'SMA Cross Only' : 'No Signal';
+  document.getElementById('morning-label').textContent = lbl;
+  document.getElementById('morning-label').className = `score-label label-${cls}`;
+
+  // Alert banner — tiered, prime window only
+  const alertEl = document.getElementById('morning-alert');
+  const timeStr = data.signal_time
+    ? `${data.signal_time}${data.bars_ago > 0 ? ' (' + (data.bars_ago * 5) + 'min ago)' : ''}`
+    : '';
+  if (wq === 'prime' && data.score === 100) {
+    alertEl.style.display = 'block';
+    alertEl.style.background = '#052e16';
+    alertEl.style.border     = '1px solid #166534';
+    alertEl.style.color      = '#4ade80';
+    alertEl.innerHTML = `🟢 FULL SETUP — ${timeStr}`;
+  } else if (wq === 'prime' && data.score === 75) {
+    alertEl.style.display = 'block';
+    alertEl.style.background = '#1a1200';
+    alertEl.style.border     = '1px solid #78350f';
+    alertEl.style.color      = '#fbbf24';
+    alertEl.innerHTML = `🟡 3 OF 4 — ${timeStr}`;
+  } else if (wq === 'prime' && data.score === 50) {
+    alertEl.style.display = 'block';
+    alertEl.style.background = '#111';
+    alertEl.style.border     = '1px solid #374151';
+    alertEl.style.color      = '#6b7280';
+    alertEl.innerHTML = `2 of 4 conditions met — ${timeStr}`;
+  } else {
+    alertEl.style.display = 'none';
+  }
+
+  // Volume warning
+  const volWarnEl = document.getElementById('morning-vol-warning');
+  volWarnEl.style.display = (data.detected && data.vol_warning) ? 'block' : 'none';
+
+  // Criteria
+  const critEl = document.getElementById('morning-criteria');
+  critEl.innerHTML = data.criteria.map(c => `
+    <div class="criteria-row">
+      <div class="crit-icon ${c.pass ? 'crit-pass' : 'crit-fail'}">${c.pass ? '✓' : '✗'}</div>
+      <span class="crit-label ${c.pass ? 'pass' : ''}">${c.label}</span>
+      <span class="crit-pts ${c.earned > 0 ? 'earned' : ''}">${c.earned > 0 ? '+' + c.earned : '—'}</span>
+    </div>
+  `).join('');
+
+  // Values
+  const valEl = document.getElementById('morning-values');
+  valEl.innerHTML = `
+    <div class="values-title">Current Values</div>
+    <div class="values-grid">
+      ${Object.entries(data.values).map(([k,v]) => `
+        <div class="value-item">
+          <span class="value-key">${k}</span>
+          <span class="value-val">${v}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderBullishWatch(watchMap) {
+  const container = document.getElementById('bullish-watch-cards');
+  container.innerHTML = '';
+  for (const [sym, data] of Object.entries(watchMap)) {
+    const wq = data.window_quality || 'outside';
+    const wl = data.window_label   || 'Outside market hours';
+    const badgeStyles = {
+      prime:    { bg: '#052e16', color: '#4ade80', border: '#166534' },
+      marginal: { bg: '#1a1200', color: '#fbbf24', border: '#78350f' },
+      neutral:  { bg: '#111',    color: '#9ca3af', border: '#374151' },
+      avoid:    { bg: '#111',    color: '#4b5563', border: '#374151' },
+      outside:  { bg: '#111',    color: '#4b5563', border: '#374151' },
+    };
+    const bs = badgeStyles[wq] || badgeStyles['outside'];
+    const cls = scoreClass(data.score);
+    const lbl = data.detected ? '✓ All 4 Conditions Met' :
+                data.score >= 75 ? '3 of 4 Conditions Met' :
+                data.score >= 50 ? '2 of 4 Conditions Met' :
+                data.score >= 25 ? 'SMA Cross Only' : 'No Signal';
+
+    const timeStr = data.signal_time
+      ? `${data.signal_time}${data.bars_ago > 0 ? ' (' + (data.bars_ago * 5) + 'min ago)' : ''}`
+      : '';
+    let alertHtml = '';
+    if (wq === 'prime' && data.score === 100)
+      alertHtml = `<div style="display:block;margin:0 18px 12px;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:600;text-align:center;background:#052e16;border:1px solid #166534;color:#4ade80">🟢 FULL SETUP — ${timeStr}</div>`;
+    else if (wq === 'prime' && data.score === 75)
+      alertHtml = `<div style="display:block;margin:0 18px 12px;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:600;text-align:center;background:#1a1200;border:1px solid #78350f;color:#fbbf24">🟡 3 OF 4 — ${timeStr}</div>`;
+    else if (wq === 'prime' && data.score === 50)
+      alertHtml = `<div style="display:block;margin:0 18px 12px;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:600;text-align:center;background:#111;border:1px solid #374151;color:#6b7280">2 of 4 conditions met — ${timeStr}</div>`;
+
+    const criteriaHtml = data.criteria.map(c => `
+      <div class="criteria-row">
+        <div class="crit-icon ${c.pass ? 'crit-pass' : 'crit-fail'}">${c.pass ? '✓' : '✗'}</div>
+        <span class="crit-label ${c.pass ? 'pass' : ''}">${c.label}</span>
+        <span class="crit-pts ${c.earned > 0 ? 'earned' : ''}">${c.earned > 0 ? '+' + c.earned : '—'}</span>
+      </div>`).join('');
+
+    const valHtml = Object.entries(data.values).map(([k,v]) => `
+      <div class="value-item">
+        <span class="value-key">${k}</span>
+        <span class="value-val">${v}</span>
+      </div>`).join('');
+
+    container.innerHTML += `
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header">
+          <span class="card-title">⏰ ${sym} — Bullish Setup (5m)</span>
+          <span style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:${bs.bg};color:${bs.color};border:1px solid ${bs.border}">${wl}</span>
+        </div>
+        <div class="score-section">
+          <div class="score-row">
+            <div><span class="score-number score-${cls}">${data.score}</span><span class="score-max">/100</span></div>
+            <span class="score-label label-${cls}">${lbl}</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill fill-${cls}" style="width:${data.score}%"></div></div>
+        </div>
+        ${alertHtml}
+        <div class="criteria-section">${criteriaHtml}</div>
+        <div class="values-section">
+          <div class="values-title">Current Values</div>
+          <div class="values-grid">${valHtml}</div>
+        </div>
+      </div>`;
+  }
+}
+
+function renderBearishWatch(watchMap) {
+  const container = document.getElementById('bearish-watch-cards');
+  container.innerHTML = '';
+  for (const [sym, data] of Object.entries(watchMap)) {
+    const id = `watch-${sym}`;
+    const wq = data.window_quality || 'outside';
+    const wl = data.window_label   || 'Outside market hours';
+    const badgeStyles = {
+      prime:   { bg: '#2d0f0f', color: '#f87171', border: '#7f1d1d' },
+      neutral: { bg: '#111',    color: '#9ca3af', border: '#374151' },
+      avoid:   { bg: '#111',    color: '#4b5563', border: '#374151' },
+      outside: { bg: '#111',    color: '#4b5563', border: '#374151' },
+    };
+    const bs = badgeStyles[wq] || badgeStyles['outside'];
+    const cls = scoreClass(data.score);
+    const lbl = data.detected ? '✓ All 4 Conditions Met' :
+                data.score >= 75 ? '3 of 4 Conditions Met' :
+                data.score >= 50 ? '2 of 4 Conditions Met' :
+                data.score >= 25 ? 'SMA Cross Only' : 'No Signal';
+
+    const timeStr = data.signal_time
+      ? `${data.signal_time}${data.bars_ago > 0 ? ' (' + (data.bars_ago * 5) + 'min ago)' : ''}`
+      : '';
+    let alertHtml = '';
+    if (wq === 'prime' && data.score === 100)
+      alertHtml = `<div style="display:block;margin:0 18px 12px;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:600;text-align:center;background:#2d0f0f;border:1px solid #7f1d1d;color:#f87171">🔴 FULL SETUP — ${timeStr}</div>`;
+    else if (wq === 'prime' && data.score === 75)
+      alertHtml = `<div style="display:block;margin:0 18px 12px;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:600;text-align:center;background:#1a1200;border:1px solid #78350f;color:#fbbf24">🟡 3 OF 4 — ${timeStr}</div>`;
+    else if (wq === 'prime' && data.score === 50)
+      alertHtml = `<div style="display:block;margin:0 18px 12px;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:600;text-align:center;background:#111;border:1px solid #374151;color:#6b7280">2 of 4 conditions met — ${timeStr}</div>`;
+
+    const criteriaHtml = data.criteria.map(c => `
+      <div class="criteria-row">
+        <div class="crit-icon ${c.pass ? 'crit-pass' : 'crit-fail'}">${c.pass ? '✓' : '✗'}</div>
+        <span class="crit-label ${c.pass ? 'pass' : ''}">${c.label}</span>
+        <span class="crit-pts ${c.earned > 0 ? 'earned' : ''}">${c.earned > 0 ? '+' + c.earned : '—'}</span>
+      </div>`).join('');
+
+    const valHtml = Object.entries(data.values).map(([k,v]) => `
+      <div class="value-item">
+        <span class="value-key">${k}</span>
+        <span class="value-val">${v}</span>
+      </div>`).join('');
+
+    container.innerHTML += `
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header">
+          <span class="card-title">🔻 ${sym} — 3pm Bearish Setup (5m)</span>
+          <span style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:${bs.bg};color:${bs.color};border:1px solid ${bs.border}">${wl}</span>
+        </div>
+        <div class="score-section">
+          <div class="score-row">
+            <div><span class="score-number score-${cls}">${data.score}</span><span class="score-max">/100</span></div>
+            <span class="score-label label-${cls}">${lbl}</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill fill-${cls}" style="width:${data.score}%"></div></div>
+        </div>
+        ${alertHtml}
+        <div class="criteria-section">${criteriaHtml}</div>
+        <div class="values-section">
+          <div class="values-title">Current Values</div>
+          <div class="values-grid">${valHtml}</div>
+        </div>
+      </div>`;
+  }
+}
+
+function renderAfternoonSetup(data) {
+  if (!data) return;
+
+  const badge = document.getElementById('afternoon-window-badge');
+  const wq = data.window_quality || 'outside';
+  const wl = data.window_label   || 'Outside market hours';
+  const badgeStyles = {
+    prime:   { bg: '#2d0f0f', color: '#f87171', border: '#7f1d1d' },
+    neutral: { bg: '#111',    color: '#9ca3af', border: '#374151' },
+    avoid:   { bg: '#111',    color: '#4b5563', border: '#374151' },
+    outside: { bg: '#111',    color: '#4b5563', border: '#374151' },
+  };
+  const bs = badgeStyles[wq] || badgeStyles['outside'];
+  badge.textContent = wl;
+  badge.style.background  = bs.bg;
+  badge.style.color       = bs.color;
+  badge.style.borderColor = bs.border;
+
+  const cls = scoreClass(data.score);
+  document.getElementById('afternoon-score').textContent = data.score;
+  document.getElementById('afternoon-score').className = `score-number score-${cls}`;
+  document.getElementById('afternoon-bar').style.width = data.score + '%';
+  document.getElementById('afternoon-bar').className = `progress-fill fill-${cls}`;
+
+  const lbl = data.detected ? '✓ All 4 Conditions Met' :
+              data.score >= 75 ? '3 of 4 Conditions Met' :
+              data.score >= 50 ? '2 of 4 Conditions Met' :
+              data.score >= 25 ? 'SMA Cross Only' : 'No Signal';
+  document.getElementById('afternoon-label').textContent = lbl;
+  document.getElementById('afternoon-label').className = `score-label label-${cls}`;
+
+  const alertEl = document.getElementById('afternoon-alert');
+  const timeStr = data.signal_time
+    ? `${data.signal_time}${data.bars_ago > 0 ? ' (' + (data.bars_ago * 5) + 'min ago)' : ''}`
+    : '';
+  if (wq === 'prime' && data.score === 100) {
+    alertEl.style.display = 'block';
+    alertEl.style.background = '#2d0f0f';
+    alertEl.style.border     = '1px solid #7f1d1d';
+    alertEl.style.color      = '#f87171';
+    alertEl.innerHTML = `🔴 FULL SETUP — ${timeStr}`;
+  } else if (wq === 'prime' && data.score === 75) {
+    alertEl.style.display = 'block';
+    alertEl.style.background = '#1a1200';
+    alertEl.style.border     = '1px solid #78350f';
+    alertEl.style.color      = '#fbbf24';
+    alertEl.innerHTML = `🟡 3 OF 4 — ${timeStr}`;
+  } else if (wq === 'prime' && data.score === 50) {
+    alertEl.style.display = 'block';
+    alertEl.style.background = '#111';
+    alertEl.style.border     = '1px solid #374151';
+    alertEl.style.color      = '#6b7280';
+    alertEl.innerHTML = `2 of 4 conditions met — ${timeStr}`;
+  } else {
+    alertEl.style.display = 'none';
+  }
+
+  const volWarnEl = document.getElementById('afternoon-vol-warning');
+  volWarnEl.style.display = (data.score >= 50 && data.vol_warning) ? 'block' : 'none';
+
+  const critEl = document.getElementById('afternoon-criteria');
+  critEl.innerHTML = data.criteria.map(c => `
+    <div class="criteria-row">
+      <div class="crit-icon ${c.pass ? 'crit-pass' : 'crit-fail'}">${c.pass ? '✓' : '✗'}</div>
+      <span class="crit-label ${c.pass ? 'pass' : ''}">${c.label}</span>
+      <span class="crit-pts ${c.earned > 0 ? 'earned' : ''}">${c.earned > 0 ? '+' + c.earned : '—'}</span>
+    </div>
+  `).join('');
+
+  const valEl = document.getElementById('afternoon-values');
+  valEl.innerHTML = `
+    <div class="values-title">Current Values</div>
+    <div class="values-grid">
+      ${Object.entries(data.values).map(([k,v]) => `
+        <div class="value-item">
+          <span class="value-key">${k}</span>
+          <span class="value-val">${v}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+async function loadData() {
+  clearInterval(countdownTimer);
+  countdown = 60;
+
+  const btn = document.getElementById('refresh-btn');
+  btn.textContent = '↻ Loading…';
+  btn.disabled = true;
+
+  document.getElementById('error-banner').style.display = 'none';
+
+  try {
+    const res = await fetch('/api/grade');
+    const data = await res.json();
+
+    if (!data.success) {
+      const banner = document.getElementById('error-banner');
+      banner.style.display = 'block';
+      banner.textContent = '⚠ ' + data.error;
+      return;
+    }
+
+    // Header
+    document.getElementById('spy-price').textContent = '$' + data.spy_price.toFixed(2);
+    document.getElementById('timestamp').textContent = data.timestamp;
+
+    const badge = document.getElementById('market-badge');
+    if (data.is_market_hours) {
+      badge.className = 'market-badge open';
+      badge.innerHTML = '<span class="dot"></span> Live';
+    } else {
+      badge.className = 'market-badge closed';
+      badge.innerHTML = '<span class="dot"></span> Closed';
+    }
+
+    // Replay banner
+    const replayBanner = document.getElementById('replay-banner');
+    if (data.is_replay) {
+      document.getElementById('replay-date').textContent = data.replay_date;
+      replayBanner.style.display = 'block';
+    } else {
+      replayBanner.style.display = 'none';
+    }
+
+    renderMorningSetup(data.morning_setup);
+    renderBullishWatch(data.bullish_watch || {});
+    renderAfternoonSetup(data.afternoon_setup);
+    renderBearishWatch(data.bearish_watch || {});
+    renderOverall(data);
+
+  } catch (err) {
+    const banner = document.getElementById('error-banner');
+    banner.style.display = 'block';
+    banner.textContent = '⚠ Network error: ' + err.message;
+  } finally {
+    btn.textContent = '↺ Refresh';
+    btn.disabled = false;
+
+    // Restart 60-second countdown
+    countdownTimer = setInterval(() => {
+      countdown--;
+      document.getElementById('countdown').textContent = `Auto-refresh in ${countdown}s`;
+      if (countdown <= 0) {
+        document.getElementById('countdown').textContent = '';
+        loadData();
+      }
+    }, 1000);
+  }
+}
+
+// Initial load
+loadData();
+</script>
+</body>
+</html>
