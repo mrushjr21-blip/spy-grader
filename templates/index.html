@@ -288,6 +288,16 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* Per-card summary footer (Bias / Option Lean / Setup Clarity) */
+  .card-summary {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 14px 18px;
+    border-top: 1px solid #1a1a24;
+  }
+
   /* ── Disclaimer ── */
   /* ── Scanner ── */
   .scanner-header {
@@ -461,6 +471,7 @@
     </div>
     <div class="criteria-section" id="morning-criteria"></div>
     <div class="values-section" id="morning-values"></div>
+    <div id="morning-summary"></div>
   </div>
 
   <!-- Bullish watch symbols (MU, NVDA) -->
@@ -488,6 +499,7 @@
     </div>
     <div class="criteria-section" id="afternoon-criteria"></div>
     <div class="values-section" id="afternoon-values"></div>
+    <div id="afternoon-summary"></div>
   </div>
 
   <!-- Bearish watch symbols (AMD) -->
@@ -539,6 +551,47 @@ function scoreLabel(s, detected) {
   if (s >= 60) return 'Developing';
   if (s >= 40) return 'Weak';
   return 'No Signal';
+}
+
+// Per-symbol bias — mirrors the overall_direction logic in app.py:
+// bullish if score ≥75; bearish only if score ≥75 AND in the prime window.
+function biasFor(data) {
+  const wq = data.window_quality || 'outside';
+  if (data.direction === 'bearish' && data.score >= 75 && wq === 'prime') return 'bearish';
+  if (data.direction === 'bullish' && data.score >= 75) return 'bullish';
+  return 'neutral';
+}
+
+// Reusable Bias / Option Lean / Setup Clarity footer for a single setup result.
+function summaryBlock(data) {
+  const dirLabels = {
+    bullish: { text: 'Bullish', option: '→ Calls', cls: 'bullish' },
+    bearish: { text: 'Bearish', option: '→ Puts',  cls: 'bearish' },
+    neutral: { text: 'Neutral', option: '— None',  cls: 'neutral' },
+  };
+  const d   = dirLabels[biasFor(data)];
+  const cls = scoreClass(data.score);
+  const lbl = scoreLabel(data.score, data.detected);
+  return `
+    <div class="card-summary">
+      <div>
+        <div class="summary-label">Bias</div>
+        <div class="overall-direction ${d.cls}">${d.text}</div>
+      </div>
+      <div class="divider"></div>
+      <div>
+        <div class="summary-label">Option Lean</div>
+        <div class="overall-direction ${d.cls}">${d.option}</div>
+      </div>
+      <div class="divider"></div>
+      <div class="combined-score-wrap">
+        <div class="summary-label">Setup Clarity</div>
+        <div class="combined-number score-${cls}">${data.score}<span style="font-size:16px;color:#4b5563">/100</span></div>
+      </div>
+      <div>
+        <span class="score-label label-${cls}">${lbl}</span>
+      </div>
+    </div>`;
 }
 
 function renderOverall(data) {
@@ -657,6 +710,8 @@ function renderMorningSetup(data) {
       `).join('')}
     </div>
   `;
+
+  document.getElementById('morning-summary').innerHTML = summaryBlock(data);
 }
 
 function renderBullishWatch(watchMap) {
@@ -722,6 +777,7 @@ function renderBullishWatch(watchMap) {
           <div class="values-title">Current Values</div>
           <div class="values-grid">${valHtml}</div>
         </div>
+        ${summaryBlock(data)}
       </div>`;
   }
 }
@@ -789,6 +845,7 @@ function renderBearishWatch(watchMap) {
           <div class="values-title">Current Values</div>
           <div class="values-grid">${valHtml}</div>
         </div>
+        ${summaryBlock(data)}
       </div>`;
   }
 }
@@ -874,6 +931,8 @@ function renderAfternoonSetup(data) {
       `).join('')}
     </div>
   `;
+
+  document.getElementById('afternoon-summary').innerHTML = summaryBlock(data);
 }
 
 async function loadData() {
