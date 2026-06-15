@@ -505,28 +505,6 @@
   <!-- Bearish watch symbols (AMD) -->
   <div id="bearish-watch-cards"></div>
 
-  <div class="summary-card">
-    <div class="summary-left">
-      <div>
-        <div class="summary-label">Bias</div>
-        <div class="overall-direction neutral" id="overall-dir">—</div>
-      </div>
-      <div class="divider"></div>
-      <div>
-        <div class="summary-label">Option Lean</div>
-        <div class="overall-direction neutral" id="overall-option">—</div>
-      </div>
-      <div class="divider"></div>
-      <div class="combined-score-wrap">
-        <div class="summary-label">Setup Clarity</div>
-        <div class="combined-number score-none" id="combined-score">—<span style="font-size:16px;color:#4b5563">/100</span></div>
-      </div>
-      <div>
-        <span class="score-label label-none" id="combined-label">—</span>
-      </div>
-    </div>
-  </div>
-
   <div class="disclaimer">
     <strong>What this score means:</strong> Reflects how cleanly the most recent 5-minute bar matches all 4 setup conditions —
     engulfing candle, SMA10 cross, MACD curl, and double bottom. A full 100/100 in the 10–11am prime window has historically
@@ -592,33 +570,6 @@ function summaryBlock(data) {
         <span class="score-label label-${cls}">${lbl}</span>
       </div>
     </div>`;
-}
-
-function renderOverall(data) {
-  const dirLabels = {
-    bullish:    { text: 'Bullish',    option: '→ Calls', cls: 'bullish' },
-    bearish:    { text: 'Bearish',    option: '→ Puts',  cls: 'bearish' },
-    conflicting:{ text: 'Conflicting',option: '⚡ Mixed', cls: 'conflicting' },
-    neutral:    { text: 'Neutral',    option: '— None',  cls: 'neutral' },
-  };
-
-  const d = dirLabels[data.overall_direction] || dirLabels['neutral'];
-  const dirEl = document.getElementById('overall-dir');
-  dirEl.textContent = d.text;
-  dirEl.className = `overall-direction ${d.cls}`;
-
-  const optEl = document.getElementById('overall-option');
-  optEl.textContent = d.option;
-  optEl.className = `overall-direction ${d.cls}`;
-
-  const cls = scoreClass(data.score);
-  const combEl = document.getElementById('combined-score');
-  combEl.innerHTML = `${data.score}<span style="font-size:16px;color:#4b5563">/100</span>`;
-  combEl.className = `combined-number score-${cls}`;
-
-  const lbl = scoreLabel(data.score, data.morning_setup.detected || (data.afternoon_setup && data.afternoon_setup.detected));
-  document.getElementById('combined-label').textContent = lbl;
-  document.getElementById('combined-label').className = `score-label label-${cls}`;
 }
 
 function renderMorningSetup(data) {
@@ -986,7 +937,6 @@ async function loadData() {
     renderBullishWatch(data.bullish_watch || {});
     renderAfternoonSetup(data.afternoon_setup);
     renderBearishWatch(data.bearish_watch || {});
-    renderOverall(data);
 
   } catch (err) {
     const banner = document.getElementById('error-banner');
