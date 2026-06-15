@@ -167,6 +167,23 @@ def score_morning_setup(df):
         "values": {},
     }
 
+    # Compute window quality from whatever bars we have before the early return
+    if len(df) > 0:
+        _h = df.iloc[-1].name.hour
+        _quality_map = {
+            9:  ("context",  "9:30am — Pre-window, watch only"),
+            10: ("prime",    "10am — Strong at +60m (61%)"),
+            11: ("prime",    "11am — Best window (62%/68%/62%)"),
+            12: ("neutral",  "12pm — Marginal, degrades quickly"),
+            13: ("marginal", "1pm — Slight edge at +15m only (59%)"),
+            14: ("avoid",    "2pm — Below coin flip, avoid"),
+            15: ("avoid",    "3pm — Never trade bullish here (0% at +60m)"),
+        }
+        wq, wlabel = _quality_map.get(_h, ("outside", "Outside market hours"))
+        result["window_quality"] = wq
+        result["window_label"]   = wlabel
+        result["in_window"]      = _h in (10, 11)
+
     if len(df) < DB_BARS_5M + 3:
         return result
 
@@ -299,6 +316,28 @@ def score_afternoon_setup(df):
         "criteria": [],
         "values": {},
     }
+
+    # Compute window quality from whatever bars we have before the early return
+    if len(df) > 0:
+        _h = df.iloc[-1].name.hour
+        _m = df.iloc[-1].name.minute
+        if _h == 15:
+            wq, wlabel = "prime",   "3pm — Strongest bearish window (100% at +60m)"
+        elif _h == 14 and _m >= 45:
+            wq, wlabel = "context", "2:45pm — Pre-window, watch only"
+        else:
+            _quality_map = {
+                9:  ("context", "9:30am — Watch only"),
+                10: ("neutral", "10am — Mixed bearish results"),
+                11: ("avoid",   "11am — Weak bearish, avoid"),
+                12: ("avoid",   "12pm — Weak bearish, avoid"),
+                13: ("avoid",   "1pm — Weak bearish, avoid"),
+                14: ("avoid",   "2pm — Weak bearish, avoid"),
+            }
+            wq, wlabel = _quality_map.get(_h, ("outside", "Outside market hours"))
+        result["window_quality"] = wq
+        result["window_label"]   = wlabel
+        result["in_window"]      = _h == 15
 
     if len(df) < DB_BARS_5M + 3:
         return result
