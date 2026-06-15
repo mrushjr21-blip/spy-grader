@@ -36,6 +36,7 @@ app are derived from the backtester's historical accuracy results.
 |------|---------|
 | `app.py` | Flask app. Fetches live/recent bars from Alpaca, scores the morning (bullish) and afternoon (bearish) setups, serves the dashboard and a JSON grading API. |
 | `backtest.py` | Standalone CLI backtester. Scans ~23 symbols over `LOOKBACK` days, measures setup accuracy at +15/+30/+60 min, and writes a self-contained HTML report. |
+| `backtest_orb_ema.py` | Standalone CLI backtester for two **alternative** SPY strategies — Opening Range Breakout (09:30–09:45) and 20-EMA pullback. Direction-accuracy only (no stop/target simulation). Writes `backtest_results/orb_ema_report.html`. Independent of the main 4-condition setup. |
 | `templates/index.html` | The entire frontend — HTML, CSS, and vanilla JS in one file. Polls `/api/grade` every 60s and renders the cards. |
 | `requirements.txt` | Python deps (Flask, alpaca-py, pandas, numpy, python-dotenv, pytz, gunicorn). |
 | `.env.example` | Template for the two required Alpaca credentials. |
