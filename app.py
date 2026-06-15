@@ -176,6 +176,7 @@ def score_morning_setup(df):
 
     # Backtest-derived time-of-day quality for bullish signals
     _quality_map = {
+        9:  ("context",  "9:30am — Pre-window, watch only"),
         10: ("prime",    "10am — Strong at +60m (61%)"),
         11: ("prime",    "11am — Best window (62%/68%/62%)"),
         12: ("neutral",  "12pm — Marginal, degrades quickly"),
@@ -303,18 +304,24 @@ def score_afternoon_setup(df):
         return result
 
     last = df.iloc[-1]
-    now_hour = last.name.hour
+    now_hour   = last.name.hour
+    now_minute = last.name.minute
     result["in_window"] = now_hour == 15
 
-    _quality_map = {
-        15: ("prime",   "3pm — Strongest bearish window (100% at +60m)"),
-        14: ("avoid",   "2pm — Weak bearish, avoid"),
-        13: ("avoid",   "1pm — Weak bearish, avoid"),
-        12: ("avoid",   "12pm — Weak bearish, avoid"),
-        11: ("avoid",   "11am — Weak bearish, avoid"),
-        10: ("neutral", "10am — Mixed bearish results"),
-    }
-    wq, wlabel = _quality_map.get(now_hour, ("outside", "Outside market hours"))
+    if now_hour == 15:
+        wq, wlabel = "prime",   "3pm — Strongest bearish window (100% at +60m)"
+    elif now_hour == 14 and now_minute >= 45:
+        wq, wlabel = "context", "2:45pm — Pre-window, watch only"
+    else:
+        _quality_map = {
+            9:  ("context", "9:30am — Watch only"),
+            10: ("neutral", "10am — Mixed bearish results"),
+            11: ("avoid",   "11am — Weak bearish, avoid"),
+            12: ("avoid",   "12pm — Weak bearish, avoid"),
+            13: ("avoid",   "1pm — Weak bearish, avoid"),
+            14: ("avoid",   "2pm — Weak bearish, avoid"),
+        }
+        wq, wlabel = _quality_map.get(now_hour, ("outside", "Outside market hours"))
     result["window_quality"] = wq
     result["window_label"]   = wlabel
 
