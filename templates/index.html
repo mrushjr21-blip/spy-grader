@@ -433,7 +433,6 @@
 <header>
   <div class="header-left">
     <span class="app-title">SPY Setup Grader</span>
-    <span id="spy-price">—</span>
   </div>
   <div class="header-right">
     <span id="countdown"></span>
@@ -908,7 +907,6 @@ async function loadData() {
     }
 
     // Header
-    document.getElementById('spy-price').textContent = '$' + data.spy_price.toFixed(2);
     document.getElementById('timestamp').textContent = data.timestamp;
 
     const badge = document.getElementById('market-badge');
