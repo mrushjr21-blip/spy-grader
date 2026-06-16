@@ -434,6 +434,14 @@
   @media (max-width: 780px) {
     .decay-grid { grid-template-columns: 1fr; }
   }
+
+  /* ── Collapsible symbol cards (dropdowns) ── */
+  .card-header { cursor: pointer; user-select: none; }
+  .card-head-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .head-score { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .card-chevron { font-size: 10px; color: #6b7280; transition: transform 0.15s ease; }
+  .card.collapsed .card-chevron { transform: rotate(-90deg); }
+  .card.collapsed .card-body { display: none; }
 </style>
 </head>
 <body>
@@ -457,11 +465,16 @@
   </div>
 
   <!-- Morning Setup Card -->
-  <div class="card" style="margin-bottom:16px" id="morning-card">
-    <div class="card-header">
+  <div class="card collapsed" style="margin-bottom:16px" id="morning-card" data-key="morning">
+    <div class="card-header" onclick="toggleCard(this)">
       <span class="card-title">⏰ SPY <span id="morning-price" style="color:#6b7280;font-weight:400"></span> — Bullish Setup (5m)</span>
-      <span id="morning-window-badge" style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:#111;color:#4b5563;border:1px solid #374151">Outside Window</span>
+      <span class="card-head-right">
+        <span class="head-score score-none" id="morning-head-score">—</span>
+        <span id="morning-window-badge" style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:#111;color:#4b5563;border:1px solid #374151">Outside Window</span>
+        <span class="card-chevron">▾</span>
+      </span>
     </div>
+    <div class="card-body">
     <div class="score-section">
       <div class="score-row">
         <div>
@@ -479,17 +492,23 @@
     <div class="criteria-section" id="morning-criteria"></div>
     <div class="values-section" id="morning-values"></div>
     <div id="morning-summary"></div>
+    </div>
   </div>
 
   <!-- Bullish watch symbols (MU, NVDA) -->
   <div id="bullish-watch-cards"></div>
 
   <!-- 3pm Bearish Setup Card -->
-  <div class="card" style="margin-bottom:16px" id="afternoon-card">
-    <div class="card-header">
+  <div class="card collapsed" style="margin-bottom:16px" id="afternoon-card" data-key="afternoon">
+    <div class="card-header" onclick="toggleCard(this)">
       <span class="card-title">🔻 SPY <span id="afternoon-price" style="color:#6b7280;font-weight:400"></span> — 3pm Bearish Setup (5m)</span>
-      <span id="afternoon-window-badge" style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:#111;color:#4b5563;border:1px solid #374151">Outside Window</span>
+      <span class="card-head-right">
+        <span class="head-score score-none" id="afternoon-head-score">—</span>
+        <span id="afternoon-window-badge" style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:#111;color:#4b5563;border:1px solid #374151">Outside Window</span>
+        <span class="card-chevron">▾</span>
+      </span>
     </div>
+    <div class="card-body">
     <div class="score-section">
       <div class="score-row">
         <div>
@@ -507,6 +526,7 @@
     <div class="criteria-section" id="afternoon-criteria"></div>
     <div class="values-section" id="afternoon-values"></div>
     <div id="afternoon-summary"></div>
+    </div>
   </div>
 
   <!-- Bearish watch symbols (AMD) -->
@@ -630,6 +650,20 @@
 let countdown = 60;
 let countdownTimer = null;
 
+// Tracks which collapsible cards are expanded, so the watch cards (which are
+// rebuilt every refresh) keep their open/closed state. Static cards keep it
+// in the DOM automatically.
+const openCards = new Set();
+function toggleCard(header) {
+  const card = header.closest('.card');
+  card.classList.toggle('collapsed');
+  const key = card.dataset.key;
+  if (key) {
+    if (card.classList.contains('collapsed')) openCards.delete(key);
+    else openCards.add(key);
+  }
+}
+
 function scoreClass(s) {
   if (s >= 80) return 'clean';
   if (s >= 60) return 'moderate';
@@ -713,6 +747,9 @@ function renderMorningSetup(data) {
   document.getElementById('morning-score').className = `score-number score-${cls}`;
   document.getElementById('morning-bar').style.width = data.score + '%';
   document.getElementById('morning-bar').className = `progress-fill fill-${cls}`;
+  const mhs = document.getElementById('morning-head-score');
+  mhs.textContent = data.score;
+  mhs.className = `head-score score-${cls}`;
 
   // Label
   const lbl = data.detected ? '✓ All 4 Conditions Met' :
@@ -825,12 +862,19 @@ function renderBullishWatch(watchMap) {
         <span class="value-val">${v}</span>
       </div>`).join('');
 
+    const key = `bull-${sym}`;
+    const collapsed = openCards.has(key) ? '' : ' collapsed';
     container.innerHTML += `
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-header">
+      <div class="card${collapsed}" data-key="${key}" style="margin-bottom:16px">
+        <div class="card-header" onclick="toggleCard(this)">
           <span class="card-title">⏰ ${sym} ${data.price ? '<span style="color:#6b7280;font-weight:400">$' + data.price.toFixed(2) + '</span>' : ''} — Bullish Setup (5m)</span>
-          <span style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:${bs.bg};color:${bs.color};border:1px solid ${bs.border}">${wl}</span>
+          <span class="card-head-right">
+            <span class="head-score score-${cls}">${data.score}</span>
+            <span style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:${bs.bg};color:${bs.color};border:1px solid ${bs.border}">${wl}</span>
+            <span class="card-chevron">▾</span>
+          </span>
         </div>
+        <div class="card-body">
         <div class="score-section">
           <div class="score-row">
             <div><span class="score-number score-${cls}">${data.score}</span><span class="score-max">/100</span></div>
@@ -845,6 +889,7 @@ function renderBullishWatch(watchMap) {
           <div class="values-grid">${valHtml}</div>
         </div>
         ${summaryBlock(data)}
+        </div>
       </div>`;
   }
 }
@@ -894,12 +939,19 @@ function renderBearishWatch(watchMap) {
         <span class="value-val">${v}</span>
       </div>`).join('');
 
+    const key = `bear-${sym}`;
+    const collapsed = openCards.has(key) ? '' : ' collapsed';
     container.innerHTML += `
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-header">
+      <div class="card${collapsed}" data-key="${key}" style="margin-bottom:16px">
+        <div class="card-header" onclick="toggleCard(this)">
           <span class="card-title">🔻 ${sym} ${data.price ? '<span style="color:#6b7280;font-weight:400">$' + data.price.toFixed(2) + '</span>' : ''} — 3pm Bearish Setup (5m)</span>
-          <span style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:${bs.bg};color:${bs.color};border:1px solid ${bs.border}">${wl}</span>
+          <span class="card-head-right">
+            <span class="head-score score-${cls}">${data.score}</span>
+            <span style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:${bs.bg};color:${bs.color};border:1px solid ${bs.border}">${wl}</span>
+            <span class="card-chevron">▾</span>
+          </span>
         </div>
+        <div class="card-body">
         <div class="score-section">
           <div class="score-row">
             <div><span class="score-number score-${cls}">${data.score}</span><span class="score-max">/100</span></div>
@@ -914,6 +966,7 @@ function renderBearishWatch(watchMap) {
           <div class="values-grid">${valHtml}</div>
         </div>
         ${summaryBlock(data)}
+        </div>
       </div>`;
   }
 }
@@ -942,6 +995,9 @@ function renderAfternoonSetup(data) {
   document.getElementById('afternoon-score').className = `score-number score-${cls}`;
   document.getElementById('afternoon-bar').style.width = data.score + '%';
   document.getElementById('afternoon-bar').className = `progress-fill fill-${cls}`;
+  const ahs = document.getElementById('afternoon-head-score');
+  ahs.textContent = data.score;
+  ahs.className = `head-score score-${cls}`;
 
   const lbl = data.detected ? '✓ All 4 Conditions Met' :
               data.score >= 75 ? '3 of 4 Conditions Met' :
