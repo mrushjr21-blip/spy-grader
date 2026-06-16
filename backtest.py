@@ -39,16 +39,9 @@ ET          = pytz.timezone("US/Eastern")
 API_KEY     = os.environ.get("ALPACA_API_KEY", "")
 API_SECRET  = os.environ.get("ALPACA_SECRET_KEY", "")
 
-SYMBOLS = [
-    "SPY", "QQQ", "IWM",
-    "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "TSLA",
-    "AMD", "AVGO", "MU",
-    "JPM", "BAC", "GS",
-    "NFLX", "COIN", "PLTR", "XOM",
-    "XLK", "XLF", "XLE",
-]
+SYMBOLS = ["SPY", "MU", "NVDA", "AMD"]
 LOOKBACK     = 365
-WINDOWS      = [15, 30, 60]     # forward outcome windows in minutes
+WINDOWS      = [5, 10, 15, 30, 60]     # forward outcome windows in minutes
 DB_BARS      = 20               # bars to look back for double bottom/top (100 min on 5m)
 DB_TOL       = 0.0025           # 0.25% price tolerance for matching lows/highs
 MIN_SAMPLES  = 25
@@ -139,7 +132,7 @@ def add_indicators(df):
 
 def add_outcomes(df):
     df = df.copy()
-    bars_per_window = {15: 3, 30: 6, 60: 12}   # 5-min bars per window
+    bars_per_window = {5: 1, 10: 2, 15: 3, 30: 6, 60: 12}   # 5-min bars per window
     for w, bars in bars_per_window.items():
         fwd = df.groupby(df.index.date)["close"].transform(lambda x: x.shift(-bars))
         df[f"ret_{w}"] = (fwd - df["close"]) / df["close"] * 100
@@ -323,10 +316,14 @@ def variant_table(sigs):
     for label, sub in variants.items():
         r = {"variant": label}
         for direction in ["bullish", "bearish"]:
-            acc15, n = accuracy(sub, direction, 15)
+            acc5,  n = accuracy(sub, direction, 5)
+            acc10, _ = accuracy(sub, direction, 10)
+            acc15, _ = accuracy(sub, direction, 15)
             acc30, _ = accuracy(sub, direction, 30)
             acc60, _ = accuracy(sub, direction, 60)
-            r[f"n_{direction}"]    = n
+            r[f"n_{direction}"]     = n
+            r[f"acc5_{direction}"]  = acc5
+            r[f"acc10_{direction}"] = acc10
             r[f"acc15_{direction}"] = acc15
             r[f"acc30_{direction}"] = acc30
             r[f"acc60_{direction}"] = acc60
@@ -405,13 +402,13 @@ def variant_html(vt):
     for _, r in vt.iterrows():
         rows += f'<tr><td class="sym">{r["variant"]}</td>'
         rows += f'<td>{int(r["n_bullish"])} bull / {int(r["n_bearish"])} bear</td>'
-        rows += pct(r["acc15_bullish"]) + pct(r["acc30_bullish"]) + pct(r["acc60_bullish"])
-        rows += pct(r["acc15_bearish"]) + pct(r["acc30_bearish"]) + pct(r["acc60_bearish"])
+        rows += pct(r["acc5_bullish"]) + pct(r["acc10_bullish"]) + pct(r["acc15_bullish"]) + pct(r["acc30_bullish"]) + pct(r["acc60_bullish"])
+        rows += pct(r["acc5_bearish"]) + pct(r["acc10_bearish"]) + pct(r["acc15_bearish"]) + pct(r["acc30_bearish"]) + pct(r["acc60_bearish"])
         rows += "</tr>"
     return f"""<div class="card"><table>
 <tr><th>Variant</th><th>Signal Count</th>
-<th>Bull +15m</th><th>Bull +30m</th><th>Bull +60m</th>
-<th>Bear +15m</th><th>Bear +30m</th><th>Bear +60m</th></tr>
+<th>Bull +5m</th><th>Bull +10m</th><th>Bull +15m</th><th>Bull +30m</th><th>Bull +60m</th>
+<th>Bear +5m</th><th>Bear +10m</th><th>Bear +15m</th><th>Bear +30m</th><th>Bear +60m</th></tr>
 {rows}</table></div>"""
 
 
@@ -450,9 +447,14 @@ def symbol_ranking(all_sigs, direction, time_slots, window):
         valid = grp[col].dropna()
         if len(valid) < MIN_SAMPLES_SYM:
             continue
-        raw = valid.mean()
-        acc = raw if direction == "bullish" else (1 - raw)
-        rows.append({"symbol": sym, "n": len(valid), "acc": acc})
+        def _acc(w):
+            c = f"up_{w}"
+            raw = grp[c].dropna().mean()
+            return raw if direction == "bullish" else (1 - raw)
+        rows.append({"symbol": sym, "n": len(valid),
+                     "acc": _acc(window),
+                     "acc5": _acc(5), "acc10": _acc(10),
+                     "acc15": _acc(15), "acc30": _acc(30), "acc60": _acc(60)})
     if not rows:
         return pd.DataFrame()
     return pd.DataFrame(rows).sort_values("acc", ascending=False)
@@ -464,9 +466,9 @@ def symbol_ranking_html(df_rank, title, window, direction):
     rows = ""
     for i, (_, r) in enumerate(df_rank.iterrows()):
         medal = ["🥇", "🥈", "🥉"][i] if i < 3 else f"{i+1}."
-        rows += f'<tr><td class="sym">{medal} {r["symbol"]}</td><td>{int(r["n"])}</td>{pct(r["acc"])}</tr>'
+        rows += f'<tr><td class="sym">{medal} {r["symbol"]}</td><td>{int(r["n"])}</td>{pct(r["acc5"])}{pct(r["acc10"])}{pct(r["acc15"])}{pct(r["acc30"])}{pct(r["acc60"])}</tr>'
     return f"""<h3>{title}</h3><div class="card"><table>
-<tr><th>Symbol</th><th>Signals</th><th>Accuracy +{window}m ({direction})</th></tr>
+<tr><th>Symbol</th><th>Signals</th><th>+5m</th><th>+10m</th><th>+15m</th><th>+30m</th><th>+60m</th></tr>
 {rows}</table></div>"""
 
 
@@ -484,18 +486,12 @@ def build_report(all_sigs, symbol_counts):
 
     # ── Symbol rankings ──────────────────────────────────────────────────────
     body  = "<h2>Symbol Rankings — Bullish Setup (10–11am Prime Window)</h2>"
-    body += "<p class='sub'>Full setup signals (all 4 conditions) fired between 10am–11am only. Min 8 signals per symbol.</p>"
-    body += "<div class='grid2'>"
-    for w in WINDOWS:
-        body += symbol_ranking_html(symbol_ranking(all_sigs, "bullish", ["10:00","11:00"], w), f"Bullish +{w}m", w, "bullish")
-    body += "</div>"
+    body += "<p class='sub'>Full setup signals (all 4 conditions) fired between 10am–11am only. Min 8 signals per symbol. Shows signal decay curve across all windows.</p>"
+    body += symbol_ranking_html(symbol_ranking(all_sigs, "bullish", ["10:00","11:00"], 15), "Bullish — Signal Decay Curve", 15, "bullish")
 
     body += "<h2>Symbol Rankings — Bearish Setup (3pm Prime Window)</h2>"
-    body += "<p class='sub'>Full setup signals fired at 3pm only. Min 8 signals per symbol.</p>"
-    body += "<div class='grid2'>"
-    for w in WINDOWS:
-        body += symbol_ranking_html(symbol_ranking(all_sigs, "bearish", ["15:00"], w), f"Bearish +{w}m", w, "bearish")
-    body += "</div>"
+    body += "<p class='sub'>Full setup signals fired at 3pm only. Min 8 signals per symbol. Shows signal decay curve across all windows.</p>"
+    body += symbol_ranking_html(symbol_ranking(all_sigs, "bearish", ["15:00"], 15), "Bearish — Signal Decay Curve", 15, "bearish")
 
     body += "<h2>Filter Variants — What Each Condition Adds (SPY)</h2>"
     body += "<p class='sub'>Start from the top (SMA only) and read down. The last row adds the volume filter (≥0.8× avg). Green = meaningful edge (≥60%), yellow = slight edge, gray = coin flip, red = works against you.</p>"

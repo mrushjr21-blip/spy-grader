@@ -63,8 +63,8 @@ def _normalize_single(df, symbol):
     return df
 
 
-BEARISH_WATCH = ["AMD"]           # symbols to monitor for 3pm bearish setup
-BULLISH_WATCH = ["MU", "NVDA"]   # symbols to monitor for 10-11am bullish setup
+BEARISH_WATCH = ["AMD", "MU", "NVDA"]  # symbols to monitor for 3pm bearish setup
+BULLISH_WATCH = ["MU", "NVDA"]        # symbols to monitor for 10-11am bullish setup
 
 def fetch_spy_data():
     client = StockHistoricalDataClient(API_KEY, API_SECRET)
