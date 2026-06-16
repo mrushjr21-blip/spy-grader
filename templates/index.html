@@ -517,6 +517,34 @@
   <!-- Bullish watch symbols (MU, NVDA) -->
   <div id="bullish-watch-cards"></div>
 
+  <!-- SMA + Engulf bullish signal -->
+  <div class="card collapsed" style="margin-bottom:16px" id="engulf-bull-card" data-key="engulf-bull">
+    <div class="card-header" onclick="toggleCard(this)">
+      <span class="card-title"><span style="color:#4ade80">▲</span> SPY — SMA + Engulfing <span style="font-size:10px;color:#4b5563;font-weight:400;text-transform:none;letter-spacing:0">(76% win rate)</span></span>
+      <span class="card-head-right">
+        <span class="head-meta">
+          <span class="head-score score-none" id="engulf-bull-head-score">—</span>
+          <span id="engulf-bull-window-badge" style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:#111;color:#4b5563;border:1px solid #374151">Outside Window</span>
+        </span>
+        <span class="card-chevron">▾</span>
+      </span>
+    </div>
+    <div class="card-body">
+      <div class="setup-subtitle">2-Condition Bullish Signal (5m)</div>
+      <div class="score-section">
+        <div class="score-row">
+          <div><span class="score-number score-none" id="engulf-bull-score">—</span><span class="score-max">/100</span></div>
+          <span class="score-label label-none" id="engulf-bull-label">Loading…</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill fill-none" id="engulf-bull-bar" style="width:0%"></div></div>
+      </div>
+      <div id="engulf-bull-alert" style="display:none;margin:0 18px 12px;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:600;text-align:center"></div>
+      <div class="criteria-section" id="engulf-bull-criteria"></div>
+      <div class="values-section" id="engulf-bull-values"></div>
+      <div id="engulf-bull-summary"></div>
+    </div>
+  </div>
+
   <!-- Bearish section -->
   <div class="setup-section-title bearish setup-section-bearish">Bearish Setups</div>
 
@@ -556,6 +584,34 @@
 
   <!-- Bearish watch symbols (AMD) -->
   <div id="bearish-watch-cards"></div>
+
+  <!-- SMA + Engulf bearish signal -->
+  <div class="card collapsed" style="margin-bottom:16px" id="engulf-bear-card" data-key="engulf-bear">
+    <div class="card-header" onclick="toggleCard(this)">
+      <span class="card-title">🔻 SPY — SMA + Engulfing <span style="font-size:10px;color:#4b5563;font-weight:400;text-transform:none;letter-spacing:0">(70% win rate)</span></span>
+      <span class="card-head-right">
+        <span class="head-meta">
+          <span class="head-score score-none" id="engulf-bear-head-score">—</span>
+          <span id="engulf-bear-window-badge" style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:#111;color:#4b5563;border:1px solid #374151">Outside Window</span>
+        </span>
+        <span class="card-chevron">▾</span>
+      </span>
+    </div>
+    <div class="card-body">
+      <div class="setup-subtitle">2-Condition Bearish Signal (5m)</div>
+      <div class="score-section">
+        <div class="score-row">
+          <div><span class="score-number score-none" id="engulf-bear-score">—</span><span class="score-max">/100</span></div>
+          <span class="score-label label-none" id="engulf-bear-label">Loading…</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill fill-none" id="engulf-bear-bar" style="width:0%"></div></div>
+      </div>
+      <div id="engulf-bear-alert" style="display:none;margin:0 18px 12px;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:600;text-align:center"></div>
+      <div class="criteria-section" id="engulf-bear-criteria"></div>
+      <div class="values-section" id="engulf-bear-values"></div>
+      <div id="engulf-bear-summary"></div>
+    </div>
+  </div>
 
   <!-- Signal Decay Curve -->
   <div style="margin-bottom:16px">
@@ -1091,6 +1147,74 @@ function renderAfternoonSetup(data) {
   document.getElementById('afternoon-summary').innerHTML = summaryBlock(data);
 }
 
+function renderEngulf(data, prefix, isBull) {
+  if (!data) return;
+
+  const badgeStyles = {
+    prime:    { bg: isBull ? '#052e16' : '#2d0f0f', color: isBull ? '#4ade80' : '#f87171', border: isBull ? '#166534' : '#7f1d1d' },
+    context:  { bg: '#0d1a2e', color: '#60a5fa', border: '#1e3a5f' },
+    marginal: { bg: '#1a1200', color: '#fbbf24', border: '#78350f' },
+    neutral:  { bg: '#111',    color: '#9ca3af', border: '#374151' },
+    avoid:    { bg: '#111',    color: '#4b5563', border: '#374151' },
+    outside:  { bg: '#111',    color: '#4b5563', border: '#374151' },
+  };
+  const wq = data.window_quality || 'outside';
+  const wl = data.window_label   || 'Outside market hours';
+  const bs = badgeStyles[wq] || badgeStyles['outside'];
+
+  const badge = document.getElementById(`${prefix}-window-badge`);
+  badge.textContent = wl;
+  badge.style.background  = bs.bg;
+  badge.style.color       = bs.color;
+  badge.style.borderColor = bs.border;
+
+  const cls = scoreClass(data.score);
+  document.getElementById(`${prefix}-score`).textContent = data.score;
+  document.getElementById(`${prefix}-score`).className = `score-number score-${cls}`;
+  document.getElementById(`${prefix}-bar`).style.width = data.score + '%';
+  document.getElementById(`${prefix}-bar`).className = `progress-fill fill-${cls}`;
+  const hs = document.getElementById(`${prefix}-head-score`);
+  hs.textContent = data.score;
+  hs.className = `head-score score-${cls}`;
+
+  const lbl = data.detected ? '✓ Both Conditions Met' : data.score >= 50 ? 'SMA Cross Only' : 'No Signal';
+  document.getElementById(`${prefix}-label`).textContent = lbl;
+  document.getElementById(`${prefix}-label`).className = `score-label label-${cls}`;
+
+  const alertEl = document.getElementById(`${prefix}-alert`);
+  const timeStr = data.signal_time
+    ? `${data.signal_time}${data.bars_ago > 0 ? ' (' + (data.bars_ago * 5) + 'min ago)' : ''}`
+    : '';
+  if (wq === 'prime' && data.detected) {
+    alertEl.style.display    = 'block';
+    alertEl.style.background = isBull ? '#052e16' : '#2d0f0f';
+    alertEl.style.border     = isBull ? '1px solid #166534' : '1px solid #7f1d1d';
+    alertEl.style.color      = isBull ? '#4ade80' : '#f87171';
+    alertEl.innerHTML = `${isBull ? '🟢' : '🔴'} SMA + ENGULF SIGNAL — ${timeStr}`;
+  } else {
+    alertEl.style.display = 'none';
+  }
+
+  document.getElementById(`${prefix}-criteria`).innerHTML = data.criteria.map(c => `
+    <div class="criteria-row">
+      <div class="crit-icon ${c.pass ? 'crit-pass' : 'crit-fail'}">${c.pass ? '✓' : '✗'}</div>
+      <span class="crit-label ${c.pass ? 'pass' : ''}">${c.label}</span>
+      <span class="crit-pts ${c.earned > 0 ? 'earned' : ''}">${c.earned > 0 ? '+' + c.earned : '—'}</span>
+    </div>`).join('');
+
+  document.getElementById(`${prefix}-values`).innerHTML = `
+    <div class="values-title">Current Values</div>
+    <div class="values-grid">
+      ${Object.entries(data.values).map(([k,v]) => `
+        <div class="value-item">
+          <span class="value-key">${k}</span>
+          <span class="value-val">${v}</span>
+        </div>`).join('')}
+    </div>`;
+
+  document.getElementById(`${prefix}-summary`).innerHTML = summaryBlock(data);
+}
+
 async function loadData() {
   clearInterval(countdownTimer);
   countdown = 60;
@@ -1139,8 +1263,10 @@ async function loadData() {
     }
     renderMorningSetup(data.morning_setup);
     renderBullishWatch(data.bullish_watch || {});
+    renderEngulf(data.engulf_bull, 'engulf-bull', true);
     renderAfternoonSetup(data.afternoon_setup);
     renderBearishWatch(data.bearish_watch || {});
+    renderEngulf(data.engulf_bear, 'engulf-bear', false);
 
   } catch (err) {
     const banner = document.getElementById('error-banner');

@@ -146,6 +146,136 @@ def _has_double_top(window_highs, tol=0.0025):
 
 
 # ---------------------------------------------------------------------------
+# Pattern: SMA + Engulfing (2-condition, 76% bull / 70% bear win rate)
+# ---------------------------------------------------------------------------
+
+def score_sma_engulf(df, direction="bullish"):
+    is_bull = direction == "bullish"
+    result = {
+        "name": "SMA + Engulfing",
+        "detected": False,
+        "direction": direction,
+        "score": 0,
+        "max_score": 100,
+        "in_window": False,
+        "signal_time": None,
+        "bars_ago": None,
+        "criteria": [],
+        "values": {},
+        "window_quality": "outside",
+        "window_label": "Outside market hours",
+    }
+
+    if len(df) < 5:
+        return result
+
+    last     = df.iloc[-1]
+    now_hour = last.name.hour
+    now_min  = last.name.minute
+
+    if is_bull:
+        _qmap = {
+            9:  ("context",  "9:30am — Pre-window, watch only"),
+            10: ("prime",    "10am — Prime window (76% win rate)"),
+            11: ("prime",    "11am — Prime window (76% win rate)"),
+            12: ("neutral",  "12pm — Outside prime window"),
+            13: ("marginal", "1pm — Outside prime window"),
+            14: ("avoid",    "2pm — Avoid bullish"),
+            15: ("avoid",    "3pm — Avoid bullish"),
+        }
+        wq, wlabel = _qmap.get(now_hour, ("outside", "Outside market hours"))
+        result["in_window"] = now_hour in (10, 11)
+    else:
+        if now_hour == 15:
+            wq, wlabel = "prime", "3pm — Prime window (70% win rate)"
+        elif now_hour == 14 and now_min >= 45:
+            wq, wlabel = "context", "2:45pm — Pre-window, watch only"
+        else:
+            _qmap = {
+                9:  ("context", "9:30am — Watch only"),
+                10: ("neutral", "10am — Outside prime window"),
+                11: ("avoid",   "11am — Avoid bearish"),
+                12: ("avoid",   "12pm — Avoid bearish"),
+                13: ("avoid",   "1pm — Avoid bearish"),
+                14: ("avoid",   "2pm — Avoid bearish"),
+            }
+            wq, wlabel = _qmap.get(now_hour, ("outside", "Outside market hours"))
+        result["in_window"] = now_hour == 15
+
+    result["window_quality"] = wq
+    result["window_label"]   = wlabel
+
+    found = None
+    for bars_ago in range(0, min(5, len(df) - 2)):
+        i    = len(df) - 1 - bars_ago
+        bar  = df.iloc[i]
+        prev = df.iloc[i - 1]
+
+        c, o   = float(bar["close"]),  float(bar["open"])
+        pc, po = float(prev["close"]), float(prev["open"])
+        s, ps  = float(bar["sma10"]),  float(prev["sma10"])
+
+        body_lo,  body_hi  = min(o, c),   max(o, c)
+        pbody_lo, pbody_hi = min(po, pc), max(po, pc)
+
+        if is_bull:
+            sma_cross = (pc < ps) and (c > s)
+            engulf    = (c > o) and (body_lo <= pbody_lo) and (body_hi >= pbody_hi)
+        else:
+            sma_cross = (pc > ps) and (c < s)
+            engulf    = (c < o) and (body_lo <= pbody_lo) and (body_hi >= pbody_hi)
+
+        if not sma_cross:
+            continue
+
+        score = 50 + (50 if engulf else 0)
+        if found is None or score > found["score"]:
+            found = {
+                "bars_ago": bars_ago,
+                "engulf":   engulf,
+                "score":    score,
+                "bar_time": bar.name.strftime("%H:%M"),
+                "sma10":    s,
+                "price":    c,
+            }
+
+    def crit(label, passed, points):
+        result["criteria"].append({
+            "label": label, "pass": bool(passed),
+            "points": points, "earned": points if passed else 0,
+        })
+
+    cross_label  = "above" if is_bull else "below"
+    cross_from   = "from below" if is_bull else "from above"
+    engulf_label = "Bullish engulfing candle body (engulfs previous)" if is_bull else "Bearish engulfing candle body (engulfs previous)"
+
+    if found:
+        crit(f"Engulfing candle closes {cross_label} SMA10 ({cross_from})", True, 50)
+        crit(engulf_label, found["engulf"], 50)
+        result["score"]       = found["score"]
+        result["detected"]    = found["score"] == 100
+        result["signal_time"] = found["bar_time"]
+        result["bars_ago"]    = found["bars_ago"]
+        result["values"] = {
+            "Signal Bar": found["bar_time"] + ("  ← current bar" if found["bars_ago"] == 0 else f"  ({found['bars_ago']*5}min ago)"),
+            "SMA10 (5m)": f"${found['sma10']:.2f}",
+            "Price":      f"${found['price']:.2f}",
+        }
+    else:
+        last_sma   = float(df.iloc[-1]["sma10"])
+        last_close = float(df.iloc[-1]["close"])
+        crit(f"Engulfing candle closes {cross_label} SMA10 ({cross_from})", False, 50)
+        crit(engulf_label, False, 50)
+        result["values"] = {
+            "Price vs SMA10": f"${last_close - last_sma:+.2f}",
+            "SMA10 (5m)":     f"${last_sma:.2f}",
+            "No SMA10 cross": "in last 20 min",
+        }
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Pattern: 10–11am bullish setup (5m bars)
 # ---------------------------------------------------------------------------
 
@@ -503,8 +633,10 @@ def grade():
 
         today_1m  = bars_1m[bars_1m.index.date == target_date].copy()
         today_5m  = add_indicators_5m(bars_5m[bars_5m.index.date == target_date].copy())
-        morning   = score_morning_setup(today_5m)
-        afternoon = score_afternoon_setup(today_5m)
+        morning      = score_morning_setup(today_5m)
+        afternoon    = score_afternoon_setup(today_5m)
+        engulf_bull  = score_sma_engulf(today_5m, "bullish")
+        engulf_bear  = score_sma_engulf(today_5m, "bearish")
 
         bearish_watch = {}
         for sym, df_raw in bearish_5m.items():
@@ -536,6 +668,8 @@ def grade():
             "spy_price": round(float(today_1m["close"].iloc[-1]), 2) if len(today_1m) else None,
             "morning_setup": morning,
             "afternoon_setup": afternoon,
+            "engulf_bull": engulf_bull,
+            "engulf_bear": engulf_bear,
             "bullish_watch": bullish_watch,
             "bearish_watch": bearish_watch,
             "overall_direction": overall_direction,
