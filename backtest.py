@@ -2,19 +2,9 @@
 """
 backtest.py — Engulfing + SMA10 + MACD + Double Bottom/Top Setup
 
-Setup rules (5-minute bars):
-  Bullish signal:
-    1. Engulfing candle closes above SMA10 (was below on prior bar)
-    2. MACD histogram rising (curling up) OR already crossed bullish (histogram > 0)
-    3. Double/triple bottom in prior 20 bars (2+ local lows within 0.25% of each other)
-
-  Bearish signal:
-    1. Engulfing candle closes below SMA10 (was above on prior bar)
-    2. MACD histogram falling (curling down) OR already crossed bearish (histogram < 0)
-    3. Double/triple top in prior 20 bars
-
-Outcomes measured at +15m, +30m, +60m from signal bar close.
-Variants tested: full setup vs removing each condition individually.
+Win conditions:
+  Bullish: price HIGH exceeds signal-bar close at any point from signal time to 12:00pm ET
+  Bearish: price LOW drops below signal-bar close at any point from 3:00pm to 4:00pm ET
 """
 
 import os, sys
@@ -39,13 +29,12 @@ ET          = pytz.timezone("US/Eastern")
 API_KEY     = os.environ.get("ALPACA_API_KEY", "")
 API_SECRET  = os.environ.get("ALPACA_SECRET_KEY", "")
 
-SYMBOLS = ["SPY", "MU", "NVDA", "AMD"]
-LOOKBACK     = 365
-WINDOWS      = [5, 10, 15, 30, 60]     # forward outcome windows in minutes
-DB_BARS      = 20               # bars to look back for double bottom/top (100 min on 5m)
-DB_TOL       = 0.0025           # 0.25% price tolerance for matching lows/highs
-MIN_SAMPLES  = 25
-MIN_SAMPLES_SYM = 8             # lower bar for per-symbol prime-window slices
+SYMBOLS          = ["SPY", "MU", "NVDA", "AMD"]
+LOOKBACK         = 365
+DB_BARS          = 20
+DB_TOL           = 0.0025
+MIN_SAMPLES      = 10
+MIN_SAMPLES_SYM  = 8
 
 CACHE_DIR   = Path("backtest_cache")
 RESULTS_DIR = Path("backtest_results")
@@ -99,18 +88,12 @@ def fetch_bars(symbol, timeframe, days, label):
 
 def add_indicators(df):
     df = df.copy()
-
-    # SMA10
     df["sma10"] = df["close"].rolling(10, min_periods=1).mean()
-
-    # MACD (12/26/9)
     ema12 = df["close"].ewm(span=12, adjust=False).mean()
     ema26 = df["close"].ewm(span=26, adjust=False).mean()
     df["macd"]      = ema12 - ema26
     df["macd_sig"]  = df["macd"].ewm(span=9, adjust=False).mean()
     df["macd_hist"] = df["macd"] - df["macd_sig"]
-
-    # Gap type (vs prior day range)
     df["date"] = df.index.date
     daily_open = df.groupby("date")["open"].first()
     daily_high = df.groupby("date")["high"].max()
@@ -122,21 +105,36 @@ def add_indicators(df):
         o = daily_open[td]
         gap_map[td] = "up" if o > daily_high[yd] else ("down" if o < daily_low[yd] else "none")
     df["gap_type"] = df["date"].map(gap_map).fillna("none")
-
-    # Relative volume
-    df["rel_vol"] = df["volume"] / df.groupby("date")["volume"].transform("mean")
-
+    df["rel_vol"]  = df["volume"] / df.groupby("date")["volume"].transform("mean")
     df.drop(columns=["date"], inplace=True)
     return df
 
 
 def add_outcomes(df):
+    """
+    Per-bar forward-looking outcomes:
+      max_high_to_noon     — max high from this bar forward to 12pm same day (bullish win check)
+      min_low_3pm_to_close — min low from this bar forward to day end, 3pm+ only (bearish win check)
+    """
     df = df.copy()
-    bars_per_window = {5: 1, 10: 2, 15: 3, 30: 6, 60: 12}   # 5-min bars per window
-    for w, bars in bars_per_window.items():
-        fwd = df.groupby(df.index.date)["close"].transform(lambda x: x.shift(-bars))
-        df[f"ret_{w}"] = (fwd - df["close"]) / df["close"] * 100
-        df[f"up_{w}"]  = df[f"ret_{w}"] > 0
+    df["max_high_to_noon"]     = np.nan
+    df["min_low_3pm_to_close"] = np.nan
+
+    for date in pd.unique(df.index.date):
+        day = df[df.index.date == date]
+
+        # Bullish: bars before noon — rolling max high going forward to noon
+        pre_noon = day[day.index.hour < 12]
+        if len(pre_noon) > 0:
+            rolling_max = pre_noon["high"].iloc[::-1].cummax().iloc[::-1]
+            df.loc[rolling_max.index, "max_high_to_noon"] = rolling_max.values
+
+        # Bearish: bars at 3pm+ — rolling min low going forward to close
+        pm = day[day.index.hour >= 15]
+        if len(pm) > 0:
+            rolling_min = pm["low"].iloc[::-1].cummin().iloc[::-1]
+            df.loc[rolling_min.index, "min_low_3pm_to_close"] = rolling_min.values
+
     return df
 
 
@@ -145,7 +143,6 @@ def add_outcomes(df):
 # ─────────────────────────────────────────────
 
 def _local_lows(lows, swing=2):
-    """Indices of local lows: lower than `swing` bars on each side."""
     idx = []
     for i in range(swing, len(lows) - swing):
         if all(lows[i] <= lows[i-j] for j in range(1, swing+1)) and \
@@ -164,7 +161,6 @@ def _local_highs(highs, swing=2):
 
 
 def check_double_bottom(window_lows, tol=DB_TOL):
-    """Return (found, support_level) — True if 2+ local lows within tol of each other."""
     arr  = list(window_lows)
     idxs = _local_lows(arr, swing=2)
     if len(idxs) < 2:
@@ -178,7 +174,6 @@ def check_double_bottom(window_lows, tol=DB_TOL):
 
 
 def check_double_top(window_highs, tol=DB_TOL):
-    """Return (found, resistance_level) — True if 2+ local highs within tol of each other."""
     arr  = list(window_highs)
     idxs = _local_highs(arr, swing=2)
     if len(idxs) < 2:
@@ -196,20 +191,18 @@ def check_double_top(window_highs, tol=DB_TOL):
 # ─────────────────────────────────────────────
 
 def detect_signals(df):
-    """
-    Scan 5m bars and return a DataFrame of all signal bars with metadata.
-    Each row records which conditions were met so we can slice any combination.
-    """
     rows = []
 
-    close  = df["close"].values
-    open_  = df["open"].values
-    high   = df["high"].values
-    low    = df["low"].values
-    sma10  = df["sma10"].values
-    mhist  = df["macd_hist"].values
-    gap    = df["gap_type"].values
-    rvol   = df["rel_vol"].values
+    close      = df["close"].values
+    open_      = df["open"].values
+    high       = df["high"].values
+    low        = df["low"].values
+    sma10      = df["sma10"].values
+    mhist      = df["macd_hist"].values
+    gap        = df["gap_type"].values
+    rvol       = df["rel_vol"].values
+    max_h_noon = df["max_high_to_noon"].values
+    min_l_pm   = df["min_low_3pm_to_close"].values
 
     for i in range(DB_BARS + 2, len(df) - 1):
         c, o   = close[i],  open_[i]
@@ -217,67 +210,62 @@ def detect_signals(df):
         s, ps  = sma10[i],  sma10[i-1]
         h, ph  = mhist[i],  mhist[i-1]
 
-        # ── Engulfing body check ──────────────────────────────
-        body_lo  = min(o, c)
-        body_hi  = max(o, c)
-        pbody_lo = min(po, pc)
-        pbody_hi = max(po, pc)
+        body_lo  = min(o, c);   body_hi  = max(o, c)
+        pbody_lo = min(po, pc); pbody_hi = max(po, pc)
         bull_engulf = (c > o) and (body_lo <= pbody_lo) and (body_hi >= pbody_hi)
         bear_engulf = (c < o) and (body_lo <= pbody_lo) and (body_hi >= pbody_hi)
 
-        # ── SMA10 cross ───────────────────────────────────────
         sma_cross_bull = (pc < ps) and (c > s)
         sma_cross_bear = (pc > ps) and (c < s)
 
-        # ── MACD curl/cross ───────────────────────────────────
-        macd_curl_bull = (h > ph) or (h > 0)   # histogram rising OR already crossed bullish
-        macd_curl_bear = (h < ph) or (h < 0)   # histogram falling OR already crossed bearish
+        macd_curl_bull = (h > ph) or (h > 0)
+        macd_curl_bear = (h < ph) or (h < 0)
 
         if not (sma_cross_bull or sma_cross_bear):
-            continue   # need at least a SMA cross to be a candidate
+            continue
 
-        # ── Double bottom/top ─────────────────────────────────
         win_low  = low[i - DB_BARS : i]
         win_high = high[i - DB_BARS : i]
         db_found, support    = check_double_bottom(win_low)
         dt_found, resistance = check_double_top(win_high)
 
-        # ── Build signal rows ─────────────────────────────────
         ts        = df.index[i]
         time_slot = f"{ts.hour:02d}:00"
         gap_t     = gap[i]
         rv        = rvol[i]
 
         if sma_cross_bull:
+            mh  = max_h_noon[i]
+            won = bool(mh > c) if not np.isnan(mh) else np.nan
             rows.append({
-                "timestamp":    ts,
-                "direction":    "bullish",
-                "price":        c,
-                "engulf":       bull_engulf,
-                "macd_ok":      macd_curl_bull,
-                "db_found":     db_found,
-                "support":      support,
-                "time_slot":    time_slot,
-                "gap_type":     gap_t,
-                "rel_vol":      rv,
-                **{f"ret_{w}":  df[f"ret_{w}"].iloc[i] for w in WINDOWS},
-                **{f"up_{w}":   df[f"up_{w}"].iloc[i]  for w in WINDOWS},
+                "timestamp": ts,
+                "direction": "bullish",
+                "price":     c,
+                "engulf":    bull_engulf,
+                "macd_ok":   macd_curl_bull,
+                "db_found":  db_found,
+                "support":   support,
+                "time_slot": time_slot,
+                "gap_type":  gap_t,
+                "rel_vol":   rv,
+                "won":       won,
             })
 
         if sma_cross_bear:
+            ml  = min_l_pm[i]
+            won = bool(ml < c) if not np.isnan(ml) else np.nan
             rows.append({
-                "timestamp":    ts,
-                "direction":    "bearish",
-                "price":        c,
-                "engulf":       bear_engulf,
-                "macd_ok":      macd_curl_bear,
-                "db_found":     dt_found,
-                "support":      resistance,
-                "time_slot":    time_slot,
-                "gap_type":     gap_t,
-                "rel_vol":      rv,
-                **{f"ret_{w}":  df[f"ret_{w}"].iloc[i] for w in WINDOWS},
-                **{f"up_{w}":   df[f"up_{w}"].iloc[i]  for w in WINDOWS},
+                "timestamp": ts,
+                "direction": "bearish",
+                "price":     c,
+                "engulf":    bear_engulf,
+                "macd_ok":   macd_curl_bear,
+                "db_found":  dt_found,
+                "support":   resistance,
+                "time_slot": time_slot,
+                "gap_type":  gap_t,
+                "rel_vol":   rv,
+                "won":       won,
             })
 
     if not rows:
@@ -289,79 +277,59 @@ def detect_signals(df):
 # Analysis helpers
 # ─────────────────────────────────────────────
 
-def accuracy(sigs, direction, window):
-    col = f"up_{window}"
-    sub = sigs[sigs["direction"] == direction][col].dropna()
-    if len(sub) < 5:
+def win_rate(sigs, direction):
+    sub = sigs[sigs["direction"] == direction]["won"].dropna()
+    if len(sub) < MIN_SAMPLES:
         return np.nan, 0
-    acc = sub.mean() if direction == "bullish" else (1 - sub.mean())
-    return acc, len(sub)
+    return sub.mean(), len(sub)
 
 
 def variant_table(sigs):
-    """
-    Compare accuracy across filter variants:
-    SMA only / SMA+Engulf / SMA+MACD / SMA+DB / Full (all 4) / Full + Vol ≥0.8×.
-    """
     full = sigs["engulf"] & sigs["macd_ok"] & sigs["db_found"]
     variants = {
-        "SMA10 cross only":              sigs,
-        "SMA + Engulfing":               sigs[sigs["engulf"]],
-        "SMA + MACD curl":               sigs[sigs["macd_ok"]],
-        "SMA + Double Bottom/Top":       sigs[sigs["db_found"]],
-        "Full setup (all 4)":            sigs[full],
-        "Full setup + Vol ≥0.8×":        sigs[full & (sigs["rel_vol"] >= 0.8)],
+        "SMA10 cross only":        sigs,
+        "SMA + Engulfing":         sigs[sigs["engulf"]],
+        "SMA + MACD curl":         sigs[sigs["macd_ok"]],
+        "SMA + Double Bottom/Top": sigs[sigs["db_found"]],
+        "Full setup (all 4)":      sigs[full],
+        "Full setup + Vol ≥0.8×":  sigs[full & (sigs["rel_vol"] >= 0.8)],
     }
     rows = []
     for label, sub in variants.items():
-        r = {"variant": label}
-        for direction in ["bullish", "bearish"]:
-            acc5,  n = accuracy(sub, direction, 5)
-            acc10, _ = accuracy(sub, direction, 10)
-            acc15, _ = accuracy(sub, direction, 15)
-            acc30, _ = accuracy(sub, direction, 30)
-            acc60, _ = accuracy(sub, direction, 60)
-            r[f"n_{direction}"]     = n
-            r[f"acc5_{direction}"]  = acc5
-            r[f"acc10_{direction}"] = acc10
-            r[f"acc15_{direction}"] = acc15
-            r[f"acc30_{direction}"] = acc30
-            r[f"acc60_{direction}"] = acc60
-        rows.append(r)
+        wr_bull, n_bull = win_rate(sub, "bullish")
+        wr_bear, n_bear = win_rate(sub, "bearish")
+        rows.append({"variant": label, "n_bull": n_bull, "n_bear": n_bear,
+                     "wr_bull": wr_bull, "wr_bear": wr_bear})
     return pd.DataFrame(rows)
 
 
-def compound_table(sigs, col_a, col_b, window, direction, min_vol=None):
-    col = f"up_{window}"
-    mask = sigs["engulf"] & sigs["macd_ok"] & sigs["db_found"] & (sigs["direction"] == direction)
-    if min_vol is not None:
-        mask = mask & (sigs["rel_vol"] >= min_vol)
-    sub = sigs[mask].copy()
-    sub["combo"] = sub[col_a].astype(str) + " + " + sub[col_b].astype(str)
-    valid = sub[["combo", col]].dropna()
-    if len(valid) == 0:
-        return pd.DataFrame()
-    grp = valid.groupby("combo")[col].agg(["mean", "count"])
-    grp.columns = ["raw", "n"]
-    grp["pct_correct"] = grp["raw"] if direction == "bullish" else (1 - grp["raw"])
-    return grp[grp["n"] >= MIN_SAMPLES].sort_values("pct_correct", ascending=False)[["n", "pct_correct"]]
-
-
-def condition_accuracy(full_sigs, col, direction, window, min_vol=None):
-    """Accuracy of full setup signals grouped by a condition column."""
+def condition_win_rate(full_sigs, col, direction, min_vol=None):
     mask = (
         full_sigs["engulf"] & full_sigs["macd_ok"] & full_sigs["db_found"] &
         (full_sigs["direction"] == direction)
     )
     if min_vol is not None:
         mask = mask & (full_sigs["rel_vol"] >= min_vol)
-    sub = full_sigs[mask][[col, f"up_{window}"]].dropna()
+    sub = full_sigs[mask][[col, "won"]].dropna()
     if len(sub) == 0:
         return pd.DataFrame()
-    grp = sub.groupby(col)[f"up_{window}"].agg(["mean", "count"])
-    grp.columns = ["raw", "n"]
-    grp["acc"] = grp["raw"] if direction == "bullish" else (1 - grp["raw"])
-    return grp[grp["n"] >= MIN_SAMPLES].sort_values("acc", ascending=False)[["n","acc"]]
+    grp = sub.groupby(col)["won"].agg(["mean", "count"])
+    grp.columns = ["win_rate", "n"]
+    return grp[grp["n"] >= MIN_SAMPLES].sort_values("win_rate", ascending=False)[["n", "win_rate"]]
+
+
+def symbol_ranking(all_sigs, direction, time_slots):
+    full = all_sigs[all_sigs["engulf"] & all_sigs["macd_ok"] & all_sigs["db_found"]]
+    sub  = full[(full["direction"] == direction) & (full["time_slot"].isin(time_slots))]
+    rows = []
+    for sym, grp in sub.groupby("symbol"):
+        valid = grp["won"].dropna()
+        if len(valid) < MIN_SAMPLES_SYM:
+            continue
+        rows.append({"symbol": sym, "n": len(valid), "win_rate": valid.mean()})
+    if not rows:
+        return pd.DataFrame()
+    return pd.DataFrame(rows).sort_values("win_rate", ascending=False)
 
 
 # ─────────────────────────────────────────────
@@ -369,7 +337,7 @@ def condition_accuracy(full_sigs, col, direction, window, min_vol=None):
 # ─────────────────────────────────────────────
 
 CSS = """
-body{background:#0b0b0f;color:#d1d5db;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px;padding:28px;max-width:1200px;margin:0 auto}
+body{background:#0b0b0f;color:#d1d5db;font-family:'Segoe UI',system-ui,sans-serif;font-size:13px;padding:28px;max-width:1100px;margin:0 auto}
 h1{font-size:22px;font-weight:700;color:#f9fafb;margin:0 0 4px}
 h2{font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.1em;margin:32px 0 12px;border-bottom:1px solid #1f2028;padding-bottom:8px}
 h3{font-size:13px;font-weight:600;color:#9ca3af;margin:20px 0 6px}
@@ -401,148 +369,84 @@ def variant_html(vt):
     rows = ""
     for _, r in vt.iterrows():
         rows += f'<tr><td class="sym">{r["variant"]}</td>'
-        rows += f'<td>{int(r["n_bullish"])} bull / {int(r["n_bearish"])} bear</td>'
-        rows += pct(r["acc5_bullish"]) + pct(r["acc10_bullish"]) + pct(r["acc15_bullish"]) + pct(r["acc30_bullish"]) + pct(r["acc60_bullish"])
-        rows += pct(r["acc5_bearish"]) + pct(r["acc10_bearish"]) + pct(r["acc15_bearish"]) + pct(r["acc30_bearish"]) + pct(r["acc60_bearish"])
+        rows += f'<td>{int(r["n_bull"])} bull / {int(r["n_bear"])} bear</td>'
+        rows += pct(r["wr_bull"]) + pct(r["wr_bear"])
         rows += "</tr>"
     return f"""<div class="card"><table>
-<tr><th>Variant</th><th>Signal Count</th>
-<th>Bull +5m</th><th>Bull +10m</th><th>Bull +15m</th><th>Bull +30m</th><th>Bull +60m</th>
-<th>Bear +5m</th><th>Bear +10m</th><th>Bear +15m</th><th>Bear +30m</th><th>Bear +60m</th></tr>
+<tr><th>Variant</th><th>Signal Count</th><th>Bull Win %</th><th>Bear Win %</th></tr>
 {rows}</table></div>"""
 
 
-def compound_html(df_comp, title, window, direction):
-    if df_comp is None or len(df_comp) == 0:
+def cond_html(df_cond, title, direction):
+    if df_cond is None or len(df_cond) == 0:
         return f"<h3>{title}</h3><p style='color:#4b5563;font-size:12px'>Not enough data (min {MIN_SAMPLES} signals).</p>"
     rows = ""
-    for idx, row in df_comp.iterrows():
-        rows += f'<tr><td class="sym">{idx}</td><td>{int(row["n"])}</td>{pct(row["pct_correct"])}</tr>'
-    return f"""<h3>{title}</h3><div class="card"><table>
-<tr><th>Combination</th><th>Signals</th><th>Accuracy +{window}m ({direction})</th></tr>
-{rows}</table></div>"""
-
-
-def cond_html(df_cond, title, window, direction):
-    if df_cond is None or len(df_cond) == 0:
-        return f"<h3>{title}</h3><p style='color:#4b5563;font-size:12px'>Not enough data (min {MIN_SAMPLES} signals per group).</p>"
-    rows = ""
     for idx, row in df_cond.iterrows():
-        rows += f'<tr><td class="sym">{idx}</td><td>{int(row["n"])}</td>{pct(row["acc"])}</tr>'
+        rows += f'<tr><td class="sym">{idx}</td><td>{int(row["n"])}</td>{pct(row["win_rate"])}</tr>'
     return f"""<h3>{title}</h3><div class="card"><table>
-<tr><th>Condition</th><th>Signals</th><th>Accuracy +{window}m ({direction})</th></tr>
+<tr><th>Condition</th><th>Signals</th><th>Win % ({direction})</th></tr>
 {rows}</table></div>"""
 
 
-def symbol_ranking(all_sigs, direction, time_slots, window):
-    """
-    Rank symbols by full-setup accuracy filtered to specific time slots.
-    Returns DataFrame sorted by accuracy descending.
-    """
-    full = all_sigs[all_sigs["engulf"] & all_sigs["macd_ok"] & all_sigs["db_found"]]
-    sub  = full[(full["direction"] == direction) & (full["time_slot"].isin(time_slots))]
-    col  = f"up_{window}"
-    rows = []
-    for sym, grp in sub.groupby("symbol"):
-        valid = grp[col].dropna()
-        if len(valid) < MIN_SAMPLES_SYM:
-            continue
-        def _acc(w):
-            c = f"up_{w}"
-            raw = grp[c].dropna().mean()
-            return raw if direction == "bullish" else (1 - raw)
-        rows.append({"symbol": sym, "n": len(valid),
-                     "acc": _acc(window),
-                     "acc5": _acc(5), "acc10": _acc(10),
-                     "acc15": _acc(15), "acc30": _acc(30), "acc60": _acc(60)})
-    if not rows:
-        return pd.DataFrame()
-    return pd.DataFrame(rows).sort_values("acc", ascending=False)
-
-
-def symbol_ranking_html(df_rank, title, window, direction):
+def symbol_ranking_html(df_rank, title):
     if df_rank is None or len(df_rank) == 0:
-        return f"<h3>{title}</h3><p style='color:#4b5563;font-size:12px'>Not enough data (min {MIN_SAMPLES_SYM} signals per symbol).</p>"
+        return f"<h3>{title}</h3><p style='color:#4b5563;font-size:12px'>Not enough data.</p>"
     rows = ""
     for i, (_, r) in enumerate(df_rank.iterrows()):
         medal = ["🥇", "🥈", "🥉"][i] if i < 3 else f"{i+1}."
-        rows += f'<tr><td class="sym">{medal} {r["symbol"]}</td><td>{int(r["n"])}</td>{pct(r["acc5"])}{pct(r["acc10"])}{pct(r["acc15"])}{pct(r["acc30"])}{pct(r["acc60"])}</tr>'
+        rows += f'<tr><td class="sym">{medal} {r["symbol"]}</td><td>{int(r["n"])}</td>{pct(r["win_rate"])}</tr>'
     return f"""<h3>{title}</h3><div class="card"><table>
-<tr><th>Symbol</th><th>Signals</th><th>+5m</th><th>+10m</th><th>+15m</th><th>+30m</th><th>+60m</th></tr>
+<tr><th>Symbol</th><th>Signals</th><th>Win %</th></tr>
 {rows}</table></div>"""
 
 
 def build_report(all_sigs, symbol_counts):
     now_str = datetime.now(ET).strftime("%Y-%m-%d %H:%M ET")
 
-    full = all_sigs[all_sigs["engulf"] & all_sigs["macd_ok"] & all_sigs["db_found"]]
-    full_hv = full[full["rel_vol"] >= 0.8]
+    full      = all_sigs[all_sigs["engulf"] & all_sigs["macd_ok"] & all_sigs["db_found"]]
     full_bull = full[full["direction"] == "bullish"]
     full_bear = full[full["direction"] == "bearish"]
-    full_hv_bull = full_hv[full_hv["direction"] == "bullish"]
-    full_hv_bear = full_hv[full_hv["direction"] == "bearish"]
 
     vt = variant_table(all_sigs)
 
-    # ── Symbol rankings ──────────────────────────────────────────────────────
-    body  = "<h2>Symbol Rankings — Bullish Setup (10–11am Prime Window)</h2>"
-    body += "<p class='sub'>Full setup signals (all 4 conditions) fired between 10am–11am only. Min 8 signals per symbol. Shows signal decay curve across all windows.</p>"
-    body += symbol_ranking_html(symbol_ranking(all_sigs, "bullish", ["10:00","11:00"], 15), "Bullish — Signal Decay Curve", 15, "bullish")
+    body  = "<h2>Symbol Rankings — Bullish (10–11am)</h2>"
+    body += "<p class='sub'>Full setup fired 10–11am. Win = price high exceeded signal close before 12pm. Min 8 signals.</p>"
+    body += symbol_ranking_html(symbol_ranking(all_sigs, "bullish", ["10:00", "11:00"]), "Bullish Win Rate")
 
-    body += "<h2>Symbol Rankings — Bearish Setup (3pm Prime Window)</h2>"
-    body += "<p class='sub'>Full setup signals fired at 3pm only. Min 8 signals per symbol. Shows signal decay curve across all windows.</p>"
-    body += symbol_ranking_html(symbol_ranking(all_sigs, "bearish", ["15:00"], 15), "Bearish — Signal Decay Curve", 15, "bearish")
+    body += "<h2>Symbol Rankings — Bearish (3pm)</h2>"
+    body += "<p class='sub'>Full setup fired at 3pm. Win = price low dropped below signal close before 4pm. Min 8 signals.</p>"
+    body += symbol_ranking_html(symbol_ranking(all_sigs, "bearish", ["15:00"]), "Bearish Win Rate")
 
-    body += "<h2>Filter Variants — What Each Condition Adds (SPY)</h2>"
-    body += "<p class='sub'>Start from the top (SMA only) and read down. The last row adds the volume filter (≥0.8× avg). Green = meaningful edge (≥60%), yellow = slight edge, gray = coin flip, red = works against you.</p>"
+    body += "<h2>Filter Variants — What Each Condition Adds</h2>"
+    body += "<p class='sub'>Bull win: high > signal close before noon. Bear win: low < signal close before 4pm.</p>"
     body += variant_html(vt)
 
-    # ── Full setup (all signals, no vol filter) ──────────────────────────────
-    body += "<h2>Full Setup (All Signals) — Time of Day</h2>"
-    body += f"<p class='sub'>{len(full_bull)} bullish · {len(full_bear)} bearish signals after all 4 conditions (includes low-volume).</p>"
+    body += "<h2>Full Setup — Win Rate by Time of Day</h2>"
+    body += f"<p class='sub'>{len(full_bull)} bullish · {len(full_bear)} bearish full-setup signals total.</p>"
     body += "<div class='grid2'>"
-    for w in WINDOWS:
-        body += cond_html(condition_accuracy(all_sigs, "time_slot", "bullish", w), f"Bullish +{w}m by Time", w, "bullish")
-        body += cond_html(condition_accuracy(all_sigs, "time_slot", "bearish", w), f"Bearish +{w}m by Time", w, "bearish")
+    body += cond_html(condition_win_rate(all_sigs, "time_slot", "bullish"), "Bullish Win % by Hour", "bullish")
+    body += cond_html(condition_win_rate(all_sigs, "time_slot", "bearish"), "Bearish Win % by Hour", "bearish")
     body += "</div>"
 
-    # ── High-conviction (vol ≥0.8×) ─────────────────────────────────────────
-    body += "<h2>High-Conviction Signals (Vol ≥0.8×) — Time of Day</h2>"
-    body += f"<p class='sub'>{len(full_hv_bull)} bullish · {len(full_hv_bear)} bearish signals after all 4 conditions + normal/high volume. Low-volume signals excluded.</p>"
+    body += "<h2>Full Setup — Win Rate by Gap Type</h2>"
     body += "<div class='grid2'>"
-    for w in WINDOWS:
-        body += cond_html(condition_accuracy(all_sigs, "time_slot", "bullish", w, min_vol=0.8), f"Bullish +{w}m by Time", w, "bullish")
-        body += cond_html(condition_accuracy(all_sigs, "time_slot", "bearish", w, min_vol=0.8), f"Bearish +{w}m by Time", w, "bearish")
+    body += cond_html(condition_win_rate(all_sigs, "gap_type", "bullish"), "Bullish Win % by Gap", "bullish")
+    body += cond_html(condition_win_rate(all_sigs, "gap_type", "bearish"), "Bearish Win % by Gap", "bearish")
     body += "</div>"
 
-    body += "<h2>High-Conviction Signals (Vol ≥0.8×) — Gap Type</h2>"
-    body += "<div class='grid2'>"
-    for w in WINDOWS:
-        body += cond_html(condition_accuracy(all_sigs, "gap_type", "bullish", w, min_vol=0.8), f"Bullish +{w}m by Gap", w, "bullish")
-        body += cond_html(condition_accuracy(all_sigs, "gap_type", "bearish", w, min_vol=0.8), f"Bearish +{w}m by Gap", w, "bearish")
-    body += "</div>"
-
-    body += "<h2>Full Setup — Relative Volume on Signal Bar</h2>"
-    body += "<div class='grid2'>"
+    body += "<h2>Full Setup — Win Rate by Relative Volume</h2>"
     all_sigs_rv = all_sigs.copy()
     all_sigs_rv["vol_bucket"] = pd.cut(
         all_sigs_rv["rel_vol"],
         bins=[0, 0.8, 1.2, 1.5, 2.0, 99],
         labels=["<0.8×", "0.8–1.2×", "1.2–1.5×", "1.5–2.0×", ">2.0×"]
     )
-    for w in WINDOWS:
-        body += cond_html(condition_accuracy(all_sigs_rv, "vol_bucket", "bullish", w), f"Bullish +{w}m by Volume", w, "bullish")
-        body += cond_html(condition_accuracy(all_sigs_rv, "vol_bucket", "bearish", w), f"Bearish +{w}m by Volume", w, "bearish")
-    body += "</div>"
-
-    body += "<h2>Compound — Time + Gap Type (Vol ≥0.8× only)</h2>"
     body += "<div class='grid2'>"
-    for w in [15, 60]:
-        body += compound_html(compound_table(all_sigs, "time_slot", "gap_type", w, "bullish", min_vol=0.8), f"Time + Gap · Bullish +{w}m", w, "bullish")
-        body += compound_html(compound_table(all_sigs, "time_slot", "gap_type", w, "bearish", min_vol=0.8), f"Time + Gap · Bearish +{w}m", w, "bearish")
+    body += cond_html(condition_win_rate(all_sigs_rv, "vol_bucket", "bullish"), "Bullish Win % by Volume", "bullish")
+    body += cond_html(condition_win_rate(all_sigs_rv, "vol_bucket", "bearish"), "Bearish Win % by Volume", "bearish")
     body += "</div>"
 
-    counts_str = " &nbsp;·&nbsp; ".join(f"{s}: {n}" for s,n in symbol_counts.items())
+    counts_str = " &nbsp;·&nbsp; ".join(f"{s}: {n}" for s, n in symbol_counts.items())
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><title>Setup Backtest</title>
 <style>{CSS}</style></head><body>
@@ -552,18 +456,18 @@ def build_report(all_sigs, symbol_counts):
 </div>
 {body}
 <div class="disc">
-<strong>Setup rules tested:</strong>
-Bullish: engulfing candle closes above SMA10 (from below) + MACD histogram rising + double/triple bottom in prior {DB_BARS} bars (2+ lows within {DB_TOL*100:.2f}% of each other).
-Bearish: mirror image.
+<strong>Win conditions:</strong>
+Bullish: any bar high exceeds signal-bar close between signal time and 12:00pm ET on the same day.
+Bearish: any bar low drops below signal-bar close between 3:00pm and 4:00pm ET on the same day.
 <br><br>
-<strong>How to read accuracy:</strong>
-% of signals where price moved in the expected direction at each time window.
+<strong>How to read win %:</strong>
+% of full-setup signals where price reached the target direction within the window.
 50% = coin flip. <span style="color:#4ade80">≥60% = meaningful edge</span>,
 <span style="color:#facc15">55–60% = slight edge</span>, gray = noise,
-<span style="color:#f87171">&lt;48% = signal works against you</span>.
-Minimum {MIN_SAMPLES} signals required per row.
+<span style="color:#f87171">&lt;48% = works against you</span>.
+Minimum {MIN_SAMPLES} signals per row.
 <br><br>
-<strong>Limitation:</strong> {LOOKBACK} days of data. Past accuracy doesn't guarantee future results.
+<strong>Limitation:</strong> {LOOKBACK} days of data. Past win rate does not guarantee future results.
 </div>
 </body></html>"""
 
