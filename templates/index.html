@@ -517,6 +517,9 @@
   <!-- Bullish watch symbols (MU, NVDA) -->
   <div id="bullish-watch-cards"></div>
 
+  <!-- SMA + Engulf bullish watch (MU, NVDA) -->
+  <div id="engulf-bull-watch-cards"></div>
+
   <!-- SMA + Engulf bullish signal -->
   <div class="card collapsed" style="margin-bottom:16px" id="engulf-bull-card" data-key="engulf-bull">
     <div class="card-header" onclick="toggleCard(this)">
@@ -584,6 +587,9 @@
 
   <!-- Bearish watch symbols (AMD) -->
   <div id="bearish-watch-cards"></div>
+
+  <!-- SMA + Engulf bearish watch (MU, NVDA, AMD) -->
+  <div id="engulf-bear-watch-cards"></div>
 
   <!-- SMA + Engulf bearish signal -->
   <div class="card collapsed" style="margin-bottom:16px" id="engulf-bear-card" data-key="engulf-bear">
@@ -1215,6 +1221,66 @@ function renderEngulf(data, prefix, isBull) {
   document.getElementById(`${prefix}-summary`).innerHTML = summaryBlock(data);
 }
 
+function renderEngulfWatch(watchMap, containerId, isBull) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  const winRates = { MU: isBull ? '86.5%' : '77.1%', NVDA: isBull ? '76.5%' : '78.9%', AMD: isBull ? '80.0%' : '78.3%' };
+  for (const [sym, data] of Object.entries(watchMap)) {
+    const wq = data.window_quality || 'outside';
+    const wl = data.window_label   || 'Outside market hours';
+    const bullBadge = { prime:{bg:'#052e16',color:'#4ade80',border:'#166534'}, context:{bg:'#0d1a2e',color:'#60a5fa',border:'#1e3a5f'}, marginal:{bg:'#1a1200',color:'#fbbf24',border:'#78350f'}, neutral:{bg:'#111',color:'#9ca3af',border:'#374151'}, avoid:{bg:'#111',color:'#4b5563',border:'#374151'}, outside:{bg:'#111',color:'#4b5563',border:'#374151'} };
+    const bearBadge = { prime:{bg:'#2d0f0f',color:'#f87171',border:'#7f1d1d'}, context:{bg:'#0d1a2e',color:'#60a5fa',border:'#1e3a5f'}, neutral:{bg:'#111',color:'#9ca3af',border:'#374151'}, avoid:{bg:'#111',color:'#4b5563',border:'#374151'}, outside:{bg:'#111',color:'#4b5563',border:'#374151'} };
+    const bs  = (isBull ? bullBadge : bearBadge)[wq] || (isBull ? bullBadge : bearBadge)['outside'];
+    const cls = scoreClass(data.score);
+    const lbl = data.detected ? '✓ Both Conditions Met' : data.score >= 50 ? 'SMA Cross Only' : 'No Signal';
+    const timeStr = data.signal_time ? `${data.signal_time}${data.bars_ago > 0 ? ' (' + (data.bars_ago*5) + 'min ago)' : ''}` : '';
+    const icon = isBull ? '<span style="color:#4ade80">▲</span>' : '🔻';
+    const wr   = winRates[sym] || '';
+    const priceHtml = data.price ? `<span style="color:#6b7280;font-weight:400">$${data.price.toFixed(2)}</span>` : '';
+    const alertColor = isBull ? {bg:'#052e16',border:'#166534',color:'#4ade80',emoji:'🟢'} : {bg:'#2d0f0f',border:'#7f1d1d',color:'#f87171',emoji:'🔴'};
+    const alertHtml = (wq==='prime' && data.detected)
+      ? `<div style="display:block;margin:0 18px 12px;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:600;text-align:center;background:${alertColor.bg};border:1px solid ${alertColor.border};color:${alertColor.color}">${alertColor.emoji} SMA + ENGULF SIGNAL — ${timeStr}</div>`
+      : '';
+    const criteriaHtml = data.criteria.map(c => `
+      <div class="criteria-row">
+        <div class="crit-icon ${c.pass?'crit-pass':'crit-fail'}">${c.pass?'✓':'✗'}</div>
+        <span class="crit-label ${c.pass?'pass':''}">${c.label}</span>
+        <span class="crit-pts ${c.earned>0?'earned':''}">${c.earned>0?'+'+c.earned:'—'}</span>
+      </div>`).join('');
+    const valHtml = Object.entries(data.values).map(([k,v]) => `
+      <div class="value-item"><span class="value-key">${k}</span><span class="value-val">${v}</span></div>`).join('');
+    const key = `engulf-${isBull?'bull':'bear'}-${sym}`;
+    const collapsed = openCards.has(key) ? '' : ' collapsed';
+    container.innerHTML += `
+      <div class="card${collapsed}" data-key="${key}" style="margin-bottom:16px">
+        <div class="card-header" onclick="toggleCard(this)">
+          <span class="card-title">${icon} ${sym} ${priceHtml} — SMA + Engulfing <span style="font-size:10px;color:#4b5563;font-weight:400;text-transform:none;letter-spacing:0">(${wr} win rate)</span></span>
+          <span class="card-head-right">
+            <span class="head-meta">
+              <span class="head-score score-${cls}">${data.score}</span>
+              <span style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:${bs.bg};color:${bs.color};border:1px solid ${bs.border}">${wl}</span>
+            </span>
+            <span class="card-chevron">▾</span>
+          </span>
+        </div>
+        <div class="card-body">
+          <div class="setup-subtitle">${isBull?'Bullish':'Bearish'} 2-Condition Signal (5m)</div>
+          <div class="score-section">
+            <div class="score-row">
+              <div><span class="score-number score-${cls}">${data.score}</span><span class="score-max">/100</span></div>
+              <span class="score-label label-${cls}">${lbl}</span>
+            </div>
+            <div class="progress-track"><div class="progress-fill fill-${cls}" style="width:${data.score}%"></div></div>
+          </div>
+          ${alertHtml}
+          <div class="criteria-section">${criteriaHtml}</div>
+          <div class="values-section"><div class="values-title">Current Values</div><div class="values-grid">${valHtml}</div></div>
+          ${summaryBlock(data)}
+        </div>
+      </div>`;
+  }
+}
+
 async function loadData() {
   clearInterval(countdownTimer);
   countdown = 60;
@@ -1263,9 +1329,11 @@ async function loadData() {
     }
     renderMorningSetup(data.morning_setup);
     renderBullishWatch(data.bullish_watch || {});
+    renderEngulfWatch(data.engulf_bull_watch || {}, 'engulf-bull-watch-cards', true);
     renderEngulf(data.engulf_bull, 'engulf-bull', true);
     renderAfternoonSetup(data.afternoon_setup);
     renderBearishWatch(data.bearish_watch || {});
+    renderEngulfWatch(data.engulf_bear_watch || {}, 'engulf-bear-watch-cards', false);
     renderEngulf(data.engulf_bear, 'engulf-bear', false);
 
   } catch (err) {

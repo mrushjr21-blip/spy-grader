@@ -638,6 +638,20 @@ def grade():
         engulf_bull  = score_sma_engulf(today_5m, "bullish")
         engulf_bear  = score_sma_engulf(today_5m, "bearish")
 
+        engulf_bull_watch = {}
+        for sym, df_raw in bullish_5m.items():
+            sym_5m = add_indicators_5m(df_raw[df_raw.index.date == target_date].copy())
+            result = score_sma_engulf(sym_5m, "bullish")
+            result["price"] = round(float(sym_5m["close"].iloc[-1]), 2) if len(sym_5m) else None
+            engulf_bull_watch[sym] = result
+
+        engulf_bear_watch = {}
+        for sym, df_raw in bearish_5m.items():
+            sym_5m = add_indicators_5m(df_raw[df_raw.index.date == target_date].copy())
+            result = score_sma_engulf(sym_5m, "bearish")
+            result["price"] = round(float(sym_5m["close"].iloc[-1]), 2) if len(sym_5m) else None
+            engulf_bear_watch[sym] = result
+
         bearish_watch = {}
         for sym, df_raw in bearish_5m.items():
             sym_5m = add_indicators_5m(df_raw[df_raw.index.date == target_date].copy())
@@ -670,6 +684,8 @@ def grade():
             "afternoon_setup": afternoon,
             "engulf_bull": engulf_bull,
             "engulf_bear": engulf_bear,
+            "engulf_bull_watch": engulf_bull_watch,
+            "engulf_bear_watch": engulf_bear_watch,
             "bullish_watch": bullish_watch,
             "bearish_watch": bearish_watch,
             "overall_direction": overall_direction,
