@@ -453,6 +453,10 @@
   .setup-section-title.bullish { color: #4ade80; }
   .setup-section-title.bearish { color: #f87171; }
   .setup-section-bearish { margin-top: 28px; }
+  .setup-subtitle {
+    padding: 11px 18px 0; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.08em; color: #6b7280;
+  }
 </style>
 </head>
 <body>
@@ -481,7 +485,7 @@
   <!-- Morning Setup Card -->
   <div class="card collapsed" style="margin-bottom:16px" id="morning-card" data-key="morning">
     <div class="card-header" onclick="toggleCard(this)">
-      <span class="card-title">⏰ SPY <span id="morning-price" style="color:#6b7280;font-weight:400"></span> — Bullish Setup (5m)</span>
+      <span class="card-title"><span style="color:#4ade80">▲</span> SPY <span id="morning-price" style="color:#6b7280;font-weight:400"></span></span>
       <span class="card-head-right">
         <span class="head-meta">
           <span class="head-score score-none" id="morning-head-score">—</span>
@@ -491,6 +495,7 @@
       </span>
     </div>
     <div class="card-body">
+    <div class="setup-subtitle">Bullish Setup (5m)</div>
     <div class="score-section">
       <div class="score-row">
         <div>
@@ -520,7 +525,7 @@
   <!-- 3pm Bearish Setup Card -->
   <div class="card collapsed" style="margin-bottom:16px" id="afternoon-card" data-key="afternoon">
     <div class="card-header" onclick="toggleCard(this)">
-      <span class="card-title">🔻 SPY <span id="afternoon-price" style="color:#6b7280;font-weight:400"></span> — 3pm Bearish Setup (5m)</span>
+      <span class="card-title">🔻 SPY <span id="afternoon-price" style="color:#6b7280;font-weight:400"></span></span>
       <span class="card-head-right">
         <span class="head-meta">
           <span class="head-score score-none" id="afternoon-head-score">—</span>
@@ -530,6 +535,7 @@
       </span>
     </div>
     <div class="card-body">
+    <div class="setup-subtitle">3pm Bearish Setup (5m)</div>
     <div class="score-section">
       <div class="score-row">
         <div>
@@ -888,7 +894,7 @@ function renderBullishWatch(watchMap) {
     container.innerHTML += `
       <div class="card${collapsed}" data-key="${key}" style="margin-bottom:16px">
         <div class="card-header" onclick="toggleCard(this)">
-          <span class="card-title">⏰ ${sym} ${data.price ? '<span style="color:#6b7280;font-weight:400">$' + data.price.toFixed(2) + '</span>' : ''} — Bullish Setup (5m)</span>
+          <span class="card-title"><span style="color:#4ade80">▲</span> ${sym} ${data.price ? '<span style="color:#6b7280;font-weight:400">$' + data.price.toFixed(2) + '</span>' : ''}</span>
           <span class="card-head-right">
             <span class="head-meta">
               <span class="head-score score-${cls}">${data.score}</span>
@@ -898,6 +904,7 @@ function renderBullishWatch(watchMap) {
           </span>
         </div>
         <div class="card-body">
+        <div class="setup-subtitle">Bullish Setup (5m)</div>
         <div class="score-section">
           <div class="score-row">
             <div><span class="score-number score-${cls}">${data.score}</span><span class="score-max">/100</span></div>
@@ -967,7 +974,7 @@ function renderBearishWatch(watchMap) {
     container.innerHTML += `
       <div class="card${collapsed}" data-key="${key}" style="margin-bottom:16px">
         <div class="card-header" onclick="toggleCard(this)">
-          <span class="card-title">🔻 ${sym} ${data.price ? '<span style="color:#6b7280;font-weight:400">$' + data.price.toFixed(2) + '</span>' : ''} — 3pm Bearish Setup (5m)</span>
+          <span class="card-title">🔻 ${sym} ${data.price ? '<span style="color:#6b7280;font-weight:400">$' + data.price.toFixed(2) + '</span>' : ''}</span>
           <span class="card-head-right">
             <span class="head-meta">
               <span class="head-score score-${cls}">${data.score}</span>
@@ -977,6 +984,7 @@ function renderBearishWatch(watchMap) {
           </span>
         </div>
         <div class="card-body">
+        <div class="setup-subtitle">3pm Bearish Setup (5m)</div>
         <div class="score-section">
           <div class="score-row">
             <div><span class="score-number score-${cls}">${data.score}</span><span class="score-max">/100</span></div>
