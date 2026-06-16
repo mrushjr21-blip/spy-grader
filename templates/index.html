@@ -591,33 +591,6 @@
   <!-- SMA + Engulf bearish watch (MU, NVDA) -->
   <div id="engulf-bear-watch-cards"></div>
 
-  <!-- SMA + Engulf bearish signal -->
-  <div class="card collapsed" style="margin-bottom:16px" id="engulf-bear-card" data-key="engulf-bear">
-    <div class="card-header" onclick="toggleCard(this)">
-      <span class="card-title">🔻 SPY — SMA + Engulfing <span style="font-size:10px;color:#4b5563;font-weight:400;text-transform:none;letter-spacing:0">(70% win rate)</span></span>
-      <span class="card-head-right">
-        <span class="head-meta">
-          <span class="head-score score-none" id="engulf-bear-head-score">—</span>
-          <span id="engulf-bear-window-badge" style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:#111;color:#4b5563;border:1px solid #374151">Outside Window</span>
-        </span>
-        <span class="card-chevron">▾</span>
-      </span>
-    </div>
-    <div class="card-body">
-      <div class="setup-subtitle">2-Condition Bearish Signal (5m)</div>
-      <div class="score-section">
-        <div class="score-row">
-          <div><span class="score-number score-none" id="engulf-bear-score">—</span><span class="score-max">/100</span></div>
-          <span class="score-label label-none" id="engulf-bear-label">Loading…</span>
-        </div>
-        <div class="progress-track"><div class="progress-fill fill-none" id="engulf-bear-bar" style="width:0%"></div></div>
-      </div>
-      <div id="engulf-bear-alert" style="display:none;margin:0 18px 12px;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:600;text-align:center"></div>
-      <div class="criteria-section" id="engulf-bear-criteria"></div>
-      <div class="values-section" id="engulf-bear-values"></div>
-      <div id="engulf-bear-summary"></div>
-    </div>
-  </div>
 
   <!-- Signal Decay Curve -->
   <div style="margin-bottom:16px">
@@ -1326,7 +1299,6 @@ async function loadData() {
     renderAfternoonSetup(data.afternoon_setup);
     renderBearishWatch(data.bearish_watch || {});
     renderEngulfWatch(data.engulf_bear_watch || {}, 'engulf-bear-watch-cards', false);
-    renderEngulf(data.engulf_bear, 'engulf-bear', false);
 
   } catch (err) {
     const banner = document.getElementById('error-banner');
