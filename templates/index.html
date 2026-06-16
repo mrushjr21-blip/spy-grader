@@ -585,10 +585,10 @@
     </div>
   </div>
 
-  <!-- Bearish watch symbols (AMD) -->
+  <!-- Bearish watch symbols (MU, NVDA) -->
   <div id="bearish-watch-cards"></div>
 
-  <!-- SMA + Engulf bearish watch (MU, NVDA, AMD) -->
+  <!-- SMA + Engulf bearish watch (MU, NVDA) -->
   <div id="engulf-bear-watch-cards"></div>
 
   <!-- SMA + Engulf bearish signal -->
@@ -706,14 +706,6 @@
             <td style="padding:6px 10px;text-align:right;color:#4ade80;font-weight:600">62%</td>
             <td style="padding:6px 10px;text-align:right;color:#4ade80;font-weight:600">64%</td>
             <td style="padding:6px 10px;text-align:right;color:#4ade80;font-weight:600">76%</td>
-            <td style="padding:6px 10px;text-align:right;color:#4ade80;font-weight:600">100%</td>
-          </tr>
-          <tr>
-            <td style="padding:6px 10px;font-weight:700;color:#f9fafb">AMD</td>
-            <td style="padding:6px 10px;text-align:right;color:#facc15">55%</td>
-            <td style="padding:6px 10px;text-align:right;color:#facc15">52%</td>
-            <td style="padding:6px 10px;text-align:right;color:#facc15">59%</td>
-            <td style="padding:6px 10px;text-align:right;color:#4ade80;font-weight:600">71%</td>
             <td style="padding:6px 10px;text-align:right;color:#4ade80;font-weight:600">100%</td>
           </tr>
         </table>
@@ -1224,7 +1216,7 @@ function renderEngulf(data, prefix, isBull) {
 function renderEngulfWatch(watchMap, containerId, isBull) {
   const container = document.getElementById(containerId);
   container.innerHTML = '';
-  const winRates = { MU: isBull ? '86.5%' : '77.1%', NVDA: isBull ? '76.5%' : '78.9%', AMD: isBull ? '80.0%' : '78.3%' };
+  const winRates = { MU: isBull ? '86.5%' : '77.1%', NVDA: isBull ? '76.5%' : '78.9%' };
   for (const [sym, data] of Object.entries(watchMap)) {
     const wq = data.window_quality || 'outside';
     const wl = data.window_label   || 'Outside market hours';
