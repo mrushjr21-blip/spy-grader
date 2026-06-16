@@ -121,11 +121,10 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    flex-wrap: wrap;
     gap: 8px;
   }
 
-  .card-title { font-size: 13px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.08em; }
+  .card-title { font-size: 13px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; }
 
   .direction-badge {
     font-size: 11px;
@@ -438,7 +437,7 @@
   /* ── Collapsible symbol cards (dropdowns) ── */
   .card-header { cursor: pointer; user-select: none; }
   .card-head-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-  .head-meta { display: flex; align-items: center; gap: 10px; }
+  .head-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
   .head-score { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .card-chevron { font-size: 10px; color: #6b7280; transition: transform 0.15s ease; }
   .card.collapsed .card-chevron { transform: rotate(-90deg); }
