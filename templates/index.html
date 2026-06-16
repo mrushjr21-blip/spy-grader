@@ -426,6 +426,14 @@
   @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
   #countdown { font-size: 11px; color: #4b5563; }
+
+  /* ── Signal decay tables (responsive) ── */
+  .decay-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .decay-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .decay-scroll table { min-width: 300px; }
+  @media (max-width: 780px) {
+    .decay-grid { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
@@ -509,13 +517,14 @@
     <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #1f2028">
       Signal Decay — Historical Accuracy by Hold Time (365 days, full setup)
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div class="decay-grid">
 
       <!-- Bullish -->
       <div style="background:#111118;border:1px solid #1f2028;border-radius:10px;overflow:hidden">
         <div style="padding:8px 12px;font-size:11px;font-weight:600;color:#4ade80;text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid #1f2028;background:#0a1a0f">
           Bullish — 10–11am (MU / NVDA / SPY)
         </div>
+        <div class="decay-scroll">
         <table style="border-collapse:collapse;width:100%;font-size:12px">
           <tr style="border-bottom:1px solid #1f2028;background:#0f0f18">
             <th style="padding:6px 10px;text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#4b5563">Symbol</th>
@@ -550,6 +559,7 @@
             <td style="padding:6px 10px;text-align:right;color:#4ade80;font-weight:600">61%</td>
           </tr>
         </table>
+        </div>
       </div>
 
       <!-- Bearish -->
@@ -557,6 +567,7 @@
         <div style="padding:8px 12px;font-size:11px;font-weight:600;color:#f87171;text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid #1f2028;background:#1a0a0a">
           Bearish — 3pm (SPY / MU / NVDA / AMD)
         </div>
+        <div class="decay-scroll">
         <table style="border-collapse:collapse;width:100%;font-size:12px">
           <tr style="border-bottom:1px solid #1f2028;background:#0f0f18">
             <th style="padding:6px 10px;text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#4b5563">Symbol</th>
@@ -599,6 +610,7 @@
             <td style="padding:6px 10px;text-align:right;color:#4ade80;font-weight:600">100%</td>
           </tr>
         </table>
+        </div>
       </div>
 
     </div>
