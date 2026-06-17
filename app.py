@@ -63,8 +63,19 @@ def _normalize_single(df, symbol):
     return df
 
 
-BEARISH_WATCH = ["MU", "NVDA"]         # symbols to monitor for 3pm bearish setup
+BEARISH_WATCH = ["MU", "NVDA", "AMD"]  # symbols to monitor for 3pm bearish setup
 BULLISH_WATCH = ["MU", "NVDA"]        # symbols to monitor for 10-11am bullish setup
+
+# Hardcoded backtest stats for specific symbol/direction/hour combos (full setup, 365 days)
+# Keys: (symbol, direction, ET_hour)
+BACKTEST_STATS = {
+    ("MU",   "bullish", 10): {"wr_15m": 75, "wr_30m": 75, "wr_60m": 75, "avg_15m": "+0.41%", "avg_30m": "+0.48%", "avg_60m": "+0.98%", "mfe": "+1.31%", "note": "Best exit: hold full hour (+60m)"},
+    ("MU",   "bullish", 11): {"wr_15m": 75, "wr_30m": 65, "wr_60m": 75, "avg_15m": "+0.12%", "avg_30m": "+0.14%", "avg_60m": "+0.12%", "mfe": "+0.54%", "note": "Similar edge at 15m & 60m"},
+    ("AMD",  "bearish", 10): {"wr_15m": 59, "wr_30m": 76, "wr_60m": 65, "avg_15m": "+0.09%", "avg_30m": "+0.23%", "avg_60m": "+0.19%", "mfe": "+1.09%", "note": "Best exit: +30m (76% win rate)"},
+    ("NVDA", "bearish", 11): {"wr_15m": 59, "wr_30m": 59, "wr_60m": 73, "avg_15m": "+0.01%", "avg_30m": "+0.12%", "avg_60m": "+0.22%", "mfe": "+0.57%", "note": "Best exit: hold full hour (+60m)"},
+    ("NVDA", "bearish", 13): {"wr_15m": 63, "wr_30m": 68, "wr_60m": 55, "avg_15m": "+0.04%", "avg_30m": "+0.04%", "avg_60m": "+0.02%", "mfe": "+0.38%", "note": "Best exit: +30m (68% win rate)"},
+    ("MU",   "bearish", 14): {"wr_15m": 65, "wr_30m": 75, "wr_60m": 50, "avg_15m": "+0.13%", "avg_30m": "+0.28%", "avg_60m": "+0.17%", "mfe": "+0.70%", "note": "Best exit: +30m (75% win rate)"},
+}
 
 def fetch_spy_data():
     client = StockHistoricalDataClient(API_KEY, API_SECRET)
@@ -665,6 +676,17 @@ def grade():
             result = score_morning_setup(sym_5m)
             result["price"] = round(float(sym_5m["close"].iloc[-1]), 2) if len(sym_5m) else None
             bullish_watch[sym] = result
+
+        # Inject backtest stats for the current hour into watch cards (full setup only)
+        now_hour = now_et.hour
+        for sym, d in bullish_watch.items():
+            s = BACKTEST_STATS.get((sym, "bullish", now_hour))
+            if s:
+                d["backtest_stats"] = s
+        for sym, d in bearish_watch.items():
+            s = BACKTEST_STATS.get((sym, "bearish", now_hour))
+            if s:
+                d["backtest_stats"] = s
 
         if afternoon["score"] >= 75 and afternoon["window_quality"] == "prime":
             overall_direction = "bearish"
