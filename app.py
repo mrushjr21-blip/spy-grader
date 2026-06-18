@@ -71,12 +71,20 @@ ENGULF_BEAR_WATCH  = ["MU"]           # 2-condition bearish watch (prime: 2pm on
 # Hardcoded backtest stats for specific symbol/direction/hour combos (full setup, 365 days)
 # Keys: (symbol, direction, ET_hour)
 BACKTEST_STATS = {
+    # MU full setup bullish (prime: 10-11am)
     ("MU",   "bullish", 10): {"wr_15m": 75, "wr_30m": 75, "wr_60m": 75, "avg_15m": "+0.41%", "avg_30m": "+0.48%", "avg_60m": "+0.98%", "mfe": "+1.31%", "note": "Best exit: hold full hour (+60m)"},
-    ("MU",   "bullish", 11): {"wr_15m": 75, "wr_30m": 65, "wr_60m": 75, "avg_15m": "+0.12%", "avg_30m": "+0.14%", "avg_60m": "+0.12%", "mfe": "+0.54%", "note": "Similar edge at 15m & 60m"},
+    ("MU",   "bullish", 11): {"wr_15m": 75, "wr_30m": 65, "wr_60m": 75, "avg_15m": "+0.12%", "avg_30m": "+0.14%", "avg_60m": "+0.12%", "mfe": "+0.54%", "note": "Similar edge at +15m & +60m"},
+    # NVDA full setup bullish (prime: 10-11am)
+    ("NVDA", "bullish", 10): {"wr_15m": 58, "wr_30m": 69, "wr_60m": 62, "avg_15m": "-0.03%", "avg_30m": "+0.09%", "avg_60m": "+0.04%", "mfe": "+0.55%", "note": "Best exit: +30m (69% win rate)"},
+    ("NVDA", "bullish", 11): {"wr_15m": 65, "wr_30m": 62, "wr_60m": 59, "avg_15m": "+0.01%", "avg_30m": "+0.04%", "avg_60m": "+0.09%", "mfe": "+0.43%", "note": "Best edge at +15m (65% win rate)"},
+    # AMD full setup bearish (prime: 9:30-11am)
+    ("AMD",  "bearish",  9): {"wr_15m": 54, "wr_30m": 69, "wr_60m": 54, "avg_15m": "+0.00%", "avg_30m": "+0.32%", "avg_60m": "+0.70%", "mfe": "+1.28%", "note": "Best exit: +30m (69% win rate)"},
     ("AMD",  "bearish", 10): {"wr_15m": 59, "wr_30m": 76, "wr_60m": 65, "avg_15m": "+0.09%", "avg_30m": "+0.23%", "avg_60m": "+0.19%", "mfe": "+1.09%", "note": "Best exit: +30m (76% win rate)"},
-    ("NVDA", "bearish", 11): {"wr_15m": 59, "wr_30m": 59, "wr_60m": 73, "avg_15m": "+0.01%", "avg_30m": "+0.12%", "avg_60m": "+0.22%", "mfe": "+0.57%", "note": "Best exit: hold full hour (+60m)"},
-    ("NVDA", "bearish", 13): {"wr_15m": 63, "wr_30m": 68, "wr_60m": 55, "avg_15m": "+0.04%", "avg_30m": "+0.04%", "avg_60m": "+0.02%", "mfe": "+0.38%", "note": "Best exit: +30m (68% win rate)"},
-    ("MU",   "bearish", 14): {"wr_15m": 65, "wr_30m": 75, "wr_60m": 50, "avg_15m": "+0.13%", "avg_30m": "+0.28%", "avg_60m": "+0.17%", "mfe": "+0.70%", "note": "Best exit: +30m (75% win rate)"},
+    ("AMD",  "bearish", 11): {"wr_15m": 60, "wr_30m": 55, "wr_60m": 60, "avg_15m": "+0.12%", "avg_30m": "+0.12%", "avg_60m": "+0.11%", "mfe": "+0.66%", "note": "Similar edge at +15m & +60m"},
+    # NVDA full setup bearish (prime: 3pm)
+    ("NVDA", "bearish", 15): {"wr_15m": 50, "wr_30m": 50, "wr_60m": 55, "avg_15m": "+0.00%", "avg_30m": "+0.08%", "avg_60m": "+0.13%", "mfe": "+0.38%", "note": "Best exit: hold full hour (+60m)"},
+    # MU 2-condition bearish (prime: 2pm)
+    ("MU",   "engulf_bear", 14): {"wr_15m": 57, "wr_30m": 61, "wr_60m": 50, "avg_15m": "+0.05%", "avg_30m": "+0.16%", "avg_60m": "+0.02%", "mfe": "+0.73%", "note": "Best exit: +30m (61% win rate)"},
 }
 
 def fetch_spy_data():
@@ -715,7 +723,7 @@ def grade():
             result["price"] = round(float(sym_5m["close"].iloc[-1]), 2) if len(sym_5m) else None
             bullish_watch[sym] = result
 
-        # Inject backtest stats for the current hour into watch cards (full setup only)
+        # Inject backtest stats for the current hour into watch cards
         now_hour = now_et.hour
         for sym, d in bullish_watch.items():
             s = BACKTEST_STATS.get((sym, "bullish", now_hour))
@@ -723,6 +731,10 @@ def grade():
                 d["backtest_stats"] = s
         for sym, d in bearish_watch.items():
             s = BACKTEST_STATS.get((sym, "bearish", now_hour))
+            if s:
+                d["backtest_stats"] = s
+        for sym, d in engulf_bear_watch.items():
+            s = BACKTEST_STATS.get((sym, "engulf_bear", now_hour))
             if s:
                 d["backtest_stats"] = s
 

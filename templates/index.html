@@ -1236,6 +1236,7 @@ function renderEngulfWatch(watchMap, containerId, isBull) {
           <div class="criteria-section">${criteriaHtml}</div>
           <div class="values-section"><div class="values-title">Current Values</div><div class="values-grid">${valHtml}</div></div>
           ${summaryBlock(data)}
+          ${backtestStatsHtml(data.backtest_stats, isBull)}
         </div>
       </div>`;
   }
