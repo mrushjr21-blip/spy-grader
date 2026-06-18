@@ -88,17 +88,21 @@ def fetch_spy_data():
                                start=start, end=now, feed="iex")
         return _normalize_single(client.get_stock_bars(req).df, symbol)
 
-    bars_1m  = fetch_et("SPY", TimeFrame.Minute, now - timedelta(days=3))
-    bars_5m  = fetch_et("SPY", TimeFrame(5, TimeFrameUnit.Minute), now - timedelta(days=3))
+    # SPY 1m bars used only for date detection / is_replay logic
+    bars_1m = fetch_et("SPY", TimeFrame.Minute, now - timedelta(days=3))
+
+    all_bear_syms = sorted(set(BEARISH_WATCH) | set(ENGULF_BEAR_WATCH))
+    all_bull_syms = sorted(set(BULLISH_WATCH) | set(ENGULF_BULL_WATCH))
+
     bearish_5m = {
         sym: fetch_et(sym, TimeFrame(5, TimeFrameUnit.Minute), now - timedelta(days=3))
-        for sym in BEARISH_WATCH
+        for sym in all_bear_syms
     }
     bullish_5m = {
         sym: fetch_et(sym, TimeFrame(5, TimeFrameUnit.Minute), now - timedelta(days=3))
-        for sym in BULLISH_WATCH
+        for sym in all_bull_syms
     }
-    return bars_1m, bars_5m, bearish_5m, bullish_5m
+    return bars_1m, bearish_5m, bullish_5m
 
 
 def add_indicators_5m(df):
@@ -624,7 +628,7 @@ def grade():
         })
 
     try:
-        bars_1m, bars_5m, bearish_5m, bullish_5m = fetch_spy_data()
+        bars_1m, bearish_5m, bullish_5m = fetch_spy_data()
 
         now_et = datetime.now(ET)
         mo = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
@@ -643,22 +647,6 @@ def grade():
         else:
             target_date = available_dates[-1]
             is_replay = True
-
-        today_1m  = bars_1m[bars_1m.index.date == target_date].copy()
-        today_5m  = add_indicators_5m(bars_5m[bars_5m.index.date == target_date].copy())
-        morning      = score_morning_setup(today_5m)
-        afternoon    = score_afternoon_setup(today_5m)
-        engulf_bull  = score_sma_engulf(today_5m, "bullish")
-        engulf_bear  = score_sma_engulf(today_5m, "bearish")
-
-        engulf_bull_watch = {}
-        for sym, df_raw in bullish_5m.items():
-            if sym not in ENGULF_BULL_WATCH:
-                continue
-            sym_5m = add_indicators_5m(df_raw[df_raw.index.date == target_date].copy())
-            result = score_sma_engulf(sym_5m, "bullish")
-            result["price"] = round(float(sym_5m["close"].iloc[-1]), 2) if len(sym_5m) else None
-            engulf_bull_watch[sym] = result
 
         engulf_bear_watch = {}
         for sym, df_raw in bearish_5m.items():
@@ -685,6 +673,8 @@ def grade():
 
         bearish_watch = {}
         for sym, df_raw in bearish_5m.items():
+            if sym not in BEARISH_WATCH:
+                continue
             sym_5m = add_indicators_5m(df_raw[df_raw.index.date == target_date].copy())
             result = score_afternoon_setup(sym_5m)
             if sym == "AMD":
@@ -736,30 +726,15 @@ def grade():
             if s:
                 d["backtest_stats"] = s
 
-        if afternoon["score"] >= 75 and afternoon["window_quality"] == "prime":
-            overall_direction = "bearish"
-        elif morning["score"] >= 75:
-            overall_direction = "bullish"
-        else:
-            overall_direction = "neutral"
-
         return jsonify({
             "success": True,
             "timestamp": now_et.strftime("%Y-%m-%d %H:%M:%S ET"),
             "is_market_hours": is_market_hours,
             "is_replay": is_replay,
             "replay_date": str(target_date) if is_replay else None,
-            "spy_price": round(float(today_1m["close"].iloc[-1]), 2) if len(today_1m) else None,
-            "morning_setup": morning,
-            "afternoon_setup": afternoon,
-            "engulf_bull": engulf_bull,
-            "engulf_bear": engulf_bear,
-            "engulf_bull_watch": engulf_bull_watch,
-            "engulf_bear_watch": engulf_bear_watch,
             "bullish_watch": bullish_watch,
             "bearish_watch": bearish_watch,
-            "overall_direction": overall_direction,
-            "score": afternoon["score"] if overall_direction == "bearish" else morning["score"],
+            "engulf_bear_watch": engulf_bear_watch,
         })
 
     except Exception as e:

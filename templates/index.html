@@ -480,115 +480,16 @@
   <!-- Bullish section -->
   <div class="setup-section-title bullish">Bullish Setups</div>
 
-  <!-- Morning Setup Card -->
-  <div class="card collapsed" style="margin-bottom:16px" id="morning-card" data-key="morning">
-    <div class="card-header" onclick="toggleCard(this)">
-      <span class="card-title"><span style="color:#4ade80">▲</span> SPY <span id="morning-price" style="color:#6b7280;font-weight:400"></span></span>
-      <span class="card-head-right">
-        <span class="head-meta">
-          <span class="head-score score-none" id="morning-head-score">—</span>
-          <span id="morning-window-badge" style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:#111;color:#4b5563;border:1px solid #374151">Outside Window</span>
-        </span>
-        <span class="card-chevron">▾</span>
-      </span>
-    </div>
-    <div class="card-body">
-    <div class="setup-subtitle">Bullish Setup (5m)</div>
-    <div class="score-section">
-      <div class="score-row">
-        <div>
-          <span class="score-number score-none" id="morning-score">—</span>
-          <span class="score-max">/100</span>
-        </div>
-        <span class="score-label label-none" id="morning-label">Loading…</span>
-      </div>
-      <div class="progress-track"><div class="progress-fill fill-none" id="morning-bar" style="width:0%"></div></div>
-    </div>
-    <div id="morning-alert" style="display:none;margin:0 18px 12px;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:600;text-align:center"></div>
-    <div id="morning-vol-warning" style="display:none;padding:6px 18px 10px;color:#4b5563;font-size:11.5px">
-      Note: signal bar volume &lt;0.8× avg — secondary indicator only.
-    </div>
-    <div class="criteria-section" id="morning-criteria"></div>
-    <div class="values-section" id="morning-values"></div>
-    <div id="morning-summary"></div>
-    </div>
-  </div>
-
-  <!-- Bullish watch symbols (MU, NVDA) -->
+  <!-- Bullish watch symbols -->
   <div id="bullish-watch-cards"></div>
-
-  <!-- SMA + Engulf bullish watch (MU, NVDA) -->
-  <div id="engulf-bull-watch-cards"></div>
-
-  <!-- SMA + Engulf bullish signal -->
-  <div class="card collapsed" style="margin-bottom:16px" id="engulf-bull-card" data-key="engulf-bull">
-    <div class="card-header" onclick="toggleCard(this)">
-      <span class="card-title"><span style="color:#4ade80">▲</span> SPY — SMA + Engulfing <span style="font-size:10px;color:#4b5563;font-weight:400;text-transform:none;letter-spacing:0">(76% win rate)</span></span>
-      <span class="card-head-right">
-        <span class="head-meta">
-          <span class="head-score score-none" id="engulf-bull-head-score">—</span>
-          <span id="engulf-bull-window-badge" style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:#111;color:#4b5563;border:1px solid #374151">Outside Window</span>
-        </span>
-        <span class="card-chevron">▾</span>
-      </span>
-    </div>
-    <div class="card-body">
-      <div class="setup-subtitle">2-Condition Bullish Signal (5m)</div>
-      <div class="score-section">
-        <div class="score-row">
-          <div><span class="score-number score-none" id="engulf-bull-score">—</span><span class="score-max">/100</span></div>
-          <span class="score-label label-none" id="engulf-bull-label">Loading…</span>
-        </div>
-        <div class="progress-track"><div class="progress-fill fill-none" id="engulf-bull-bar" style="width:0%"></div></div>
-      </div>
-      <div id="engulf-bull-alert" style="display:none;margin:0 18px 12px;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:600;text-align:center"></div>
-      <div class="criteria-section" id="engulf-bull-criteria"></div>
-      <div class="values-section" id="engulf-bull-values"></div>
-      <div id="engulf-bull-summary"></div>
-    </div>
-  </div>
 
   <!-- Bearish section -->
   <div class="setup-section-title bearish setup-section-bearish">Bearish Setups</div>
 
-  <!-- 3pm Bearish Setup Card -->
-  <div class="card collapsed" style="margin-bottom:16px" id="afternoon-card" data-key="afternoon">
-    <div class="card-header" onclick="toggleCard(this)">
-      <span class="card-title">🔻 SPY <span id="afternoon-price" style="color:#6b7280;font-weight:400"></span></span>
-      <span class="card-head-right">
-        <span class="head-meta">
-          <span class="head-score score-none" id="afternoon-head-score">—</span>
-          <span id="afternoon-window-badge" style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:#111;color:#4b5563;border:1px solid #374151">Outside Window</span>
-        </span>
-        <span class="card-chevron">▾</span>
-      </span>
-    </div>
-    <div class="card-body">
-    <div class="setup-subtitle">3pm Bearish Setup (5m)</div>
-    <div class="score-section">
-      <div class="score-row">
-        <div>
-          <span class="score-number score-none" id="afternoon-score">—</span>
-          <span class="score-max">/100</span>
-        </div>
-        <span class="score-label label-none" id="afternoon-label">Loading…</span>
-      </div>
-      <div class="progress-track"><div class="progress-fill fill-none" id="afternoon-bar" style="width:0%"></div></div>
-    </div>
-    <div id="afternoon-alert" style="display:none;margin:0 18px 12px;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:600;text-align:center"></div>
-    <div id="afternoon-vol-warning" style="display:none;padding:6px 18px 10px;color:#4b5563;font-size:11.5px">
-      Note: signal bar volume &lt;0.8× avg — secondary indicator only.
-    </div>
-    <div class="criteria-section" id="afternoon-criteria"></div>
-    <div class="values-section" id="afternoon-values"></div>
-    <div id="afternoon-summary"></div>
-    </div>
-  </div>
-
-  <!-- Bearish watch symbols (MU, NVDA) -->
+  <!-- Bearish watch symbols -->
   <div id="bearish-watch-cards"></div>
 
-  <!-- SMA + Engulf bearish watch (MU, NVDA) -->
+  <!-- SMA + Engulf bearish watch -->
   <div id="engulf-bear-watch-cards"></div>
 
 
@@ -1382,15 +1283,7 @@ async function loadData() {
       replayBanner.style.display = 'none';
     }
 
-    if (data.spy_price) {
-      document.getElementById('morning-price').textContent = '$' + data.spy_price.toFixed(2);
-      document.getElementById('afternoon-price').textContent = '$' + data.spy_price.toFixed(2);
-    }
-    renderMorningSetup(data.morning_setup);
     renderBullishWatch(data.bullish_watch || {});
-    renderEngulfWatch(data.engulf_bull_watch || {}, 'engulf-bull-watch-cards', true);
-    renderEngulf(data.engulf_bull, 'engulf-bull', true);
-    renderAfternoonSetup(data.afternoon_setup);
     renderBearishWatch(data.bearish_watch || {});
     renderEngulfWatch(data.engulf_bear_watch || {}, 'engulf-bear-watch-cards', false);
 
