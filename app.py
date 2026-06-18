@@ -694,15 +694,15 @@ def grade():
         for sym, df_raw in bullish_5m.items():
             sym_5m = add_indicators_5m(df_raw[df_raw.index.date == target_date].copy())
             result = score_morning_setup(sym_5m)
-            if sym == "NVDA":
-                nvda_hour = now_et.hour
-                result["in_window"] = nvda_hour in (10, 11)
-                if nvda_hour in (10, 11):
+            if sym in ("MU", "NVDA"):
+                bull_hour = now_et.hour
+                result["in_window"] = bull_hour in (10, 11)
+                if bull_hour in (10, 11):
                     result["window_quality"] = "prime"
-                    result["window_label"]   = "10–11am — NVDA bullish prime window"
+                    result["window_label"]   = f"10–11am — {sym} bullish prime window"
                 else:
                     result["window_quality"] = "avoid"
-                    result["window_label"]   = "Outside NVDA bullish window (prime: 10–11am)"
+                    result["window_label"]   = f"Outside {sym} bullish window (prime: 10–11am)"
                     result["suppressed"]     = True
                     result["detected"]       = False
                     result["score"]          = 0
