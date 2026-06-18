@@ -1267,6 +1267,29 @@ function renderEngulfWatch(watchMap, containerId, isBull) {
     const bullBadge = { prime:{bg:'#052e16',color:'#4ade80',border:'#166534'}, context:{bg:'#0d1a2e',color:'#60a5fa',border:'#1e3a5f'}, marginal:{bg:'#1a1200',color:'#fbbf24',border:'#78350f'}, neutral:{bg:'#111',color:'#9ca3af',border:'#374151'}, avoid:{bg:'#111',color:'#4b5563',border:'#374151'}, outside:{bg:'#111',color:'#4b5563',border:'#374151'} };
     const bearBadge = { prime:{bg:'#2d0f0f',color:'#f87171',border:'#7f1d1d'}, context:{bg:'#0d1a2e',color:'#60a5fa',border:'#1e3a5f'}, neutral:{bg:'#111',color:'#9ca3af',border:'#374151'}, avoid:{bg:'#111',color:'#4b5563',border:'#374151'}, outside:{bg:'#111',color:'#4b5563',border:'#374151'} };
     const bs  = (isBull ? bullBadge : bearBadge)[wq] || (isBull ? bullBadge : bearBadge)['outside'];
+
+    if (data.suppressed) {
+      const icon = isBull ? '<span style="color:#4ade80">▲</span>' : '🔻';
+      const priceHtml = data.price ? `<span style="color:#6b7280;font-weight:400">$${data.price.toFixed(2)}</span>` : '';
+      const primeLabel = isBull ? '10–11am ET' : '2pm ET';
+      container.innerHTML += `
+        <div class="card collapsed" data-key="${`engulf-${isBull?'bull':'bear'}-${sym}`}" style="margin-bottom:16px">
+          <div class="card-header" onclick="toggleCard(this)">
+            <span class="card-title">${icon} ${sym} ${priceHtml} — SMA + Engulfing</span>
+            <span class="card-head-right">
+              <span class="head-meta">
+                <span style="font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;background:${bs.bg};color:${bs.color};border:1px solid ${bs.border}">${wl}</span>
+              </span>
+              <span class="card-chevron">▾</span>
+            </span>
+          </div>
+          <div class="card-body">
+            <div style="padding:14px 18px;color:#6b7280;font-size:13px">Prime window: <strong style="color:#9ca3af">${primeLabel}</strong></div>
+          </div>
+        </div>`;
+      continue;
+    }
+
     const cls = scoreClass(data.score);
     const lbl = data.detected ? '✓ Both Conditions Met' : data.score >= 50 ? 'SMA Cross Only' : 'No Signal';
     const timeStr = data.signal_time ? `${data.signal_time}${data.bars_ago > 0 ? ' (' + (data.bars_ago*5) + 'min ago)' : ''}` : '';

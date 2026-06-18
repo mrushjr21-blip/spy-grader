@@ -63,10 +63,10 @@ def _normalize_single(df, symbol):
     return df
 
 
-BEARISH_WATCH      = ["MU", "NVDA", "AMD"]  # full setup bearish watch
-BULLISH_WATCH      = ["MU", "NVDA"]         # full setup bullish watch
-ENGULF_BULL_WATCH  = ["MU"]                 # 2-condition bullish watch (NVDA excluded)
-ENGULF_BEAR_WATCH  = ["MU"]                 # 2-condition bearish watch (NVDA, AMD excluded)
+BEARISH_WATCH      = ["NVDA", "AMD"]  # full setup bearish watch
+BULLISH_WATCH      = ["NVDA"]         # full setup bullish watch
+ENGULF_BULL_WATCH  = []               # 2-condition bullish watch (empty)
+ENGULF_BEAR_WATCH  = ["MU"]           # 2-condition bearish watch (prime: 2pm only)
 
 # Hardcoded backtest stats for specific symbol/direction/hour combos (full setup, 365 days)
 # Keys: (symbol, direction, ET_hour)
@@ -666,6 +666,20 @@ def grade():
                 continue
             sym_5m = add_indicators_5m(df_raw[df_raw.index.date == target_date].copy())
             result = score_sma_engulf(sym_5m, "bearish")
+            if sym == "MU":
+                mu_hour = now_et.hour
+                result["in_window"] = mu_hour == 14
+                if mu_hour == 14:
+                    result["window_quality"] = "prime"
+                    result["window_label"]   = "2pm — MU bearish prime window"
+                else:
+                    result["window_quality"] = "avoid"
+                    result["window_label"]   = "Outside MU bearish window (prime: 2pm)"
+                    result["suppressed"]     = True
+                    result["detected"]       = False
+                    result["score"]          = 0
+                    result["criteria"]       = []
+                    result["values"]         = {}
             result["price"] = round(float(sym_5m["close"].iloc[-1]), 2) if len(sym_5m) else None
             engulf_bear_watch[sym] = result
 
