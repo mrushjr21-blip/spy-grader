@@ -828,7 +828,7 @@ function renderBullishWatch(watchMap) {
             </span>
           </div>
           <div class="card-body">
-            <div style="padding:14px 18px;color:#6b7280;font-size:13px">Prime window: <strong style="color:#9ca3af">10–11am ET</strong></div>
+            <div style="padding:14px 18px;color:#6b7280;font-size:13px">Prime window: <strong style="color:#9ca3af">${data.prime_label || '10–11am ET'}</strong></div>
           </div>
         </div>`;
       continue;
@@ -929,7 +929,7 @@ function renderBearishWatch(watchMap) {
             </span>
           </div>
           <div class="card-body">
-            <div style="padding:14px 18px;color:#6b7280;font-size:13px">Prime window: <strong style="color:#9ca3af">9:30–11am ET</strong></div>
+            <div style="padding:14px 18px;color:#6b7280;font-size:13px">Prime window: <strong style="color:#9ca3af">${data.prime_label || '—'}</strong></div>
           </div>
         </div>`;
       continue;

@@ -81,8 +81,8 @@ BACKTEST_STATS = {
     ("AMD",  "bearish",  9): {"wr_15m": 54, "wr_30m": 69, "wr_60m": 54, "avg_15m": "+0.00%", "avg_30m": "+0.32%", "avg_60m": "+0.70%", "mfe": "+1.28%", "note": "Best exit: +30m (69% win rate)"},
     ("AMD",  "bearish", 10): {"wr_15m": 59, "wr_30m": 76, "wr_60m": 65, "avg_15m": "+0.09%", "avg_30m": "+0.23%", "avg_60m": "+0.19%", "mfe": "+1.09%", "note": "Best exit: +30m (76% win rate)"},
     ("AMD",  "bearish", 11): {"wr_15m": 60, "wr_30m": 55, "wr_60m": 60, "avg_15m": "+0.12%", "avg_30m": "+0.12%", "avg_60m": "+0.11%", "mfe": "+0.66%", "note": "Similar edge at +15m & +60m"},
-    # NVDA full setup bearish (prime: 3pm)
-    ("NVDA", "bearish", 15): {"wr_15m": 50, "wr_30m": 50, "wr_60m": 55, "avg_15m": "+0.00%", "avg_30m": "+0.08%", "avg_60m": "+0.13%", "mfe": "+0.38%", "note": "Best exit: hold full hour (+60m)"},
+    # NVDA full setup bearish (prime: 1pm)
+    ("NVDA", "bearish", 13): {"wr_15m": 63, "wr_30m": 68, "wr_60m": 55, "avg_15m": "+0.04%", "avg_30m": "+0.04%", "avg_60m": "+0.02%", "mfe": "+0.38%", "note": "Best exit: +30m (68% win rate)"},
     # MU 2-condition bearish (prime: 2pm)
     ("MU",   "engulf_bear", 14): {"wr_15m": 57, "wr_30m": 61, "wr_60m": 50, "avg_15m": "+0.05%", "avg_30m": "+0.16%", "avg_60m": "+0.02%", "mfe": "+0.73%", "note": "Best exit: +30m (61% win rate)"},
 }
@@ -685,6 +685,21 @@ def grade():
                 continue
             sym_5m = add_indicators_5m(df_raw[df_raw.index.date == target_date].copy())
             result = score_afternoon_setup(sym_5m)
+            if sym == "NVDA":
+                nvda_bear_hour = now_et.hour
+                result["in_window"] = nvda_bear_hour == 13
+                if nvda_bear_hour == 13:
+                    result["window_quality"] = "prime"
+                    result["window_label"]   = "1pm — NVDA bearish prime window"
+                else:
+                    result["window_quality"] = "avoid"
+                    result["window_label"]   = "Outside NVDA bearish window (prime: 1pm)"
+                    result["suppressed"]     = True
+                    result["prime_label"]    = "1pm ET"
+                    result["detected"]       = False
+                    result["score"]          = 0
+                    result["criteria"]       = []
+                    result["values"]         = {}
             if sym == "AMD":
                 amd_hour = now_et.hour
                 result["in_window"] = amd_hour in (9, 10, 11)
@@ -695,6 +710,7 @@ def grade():
                     result["window_quality"] = "avoid"
                     result["window_label"]   = "Outside AMD bearish window (prime: 9:30–11am)"
                     result["suppressed"]     = True
+                    result["prime_label"]    = "9:30–11am ET"
                     result["detected"]       = False
                     result["score"]          = 0
                     result["criteria"]       = []
@@ -716,6 +732,7 @@ def grade():
                     result["window_quality"] = "avoid"
                     result["window_label"]   = f"Outside {sym} bullish window (prime: 10–11am)"
                     result["suppressed"]     = True
+                    result["prime_label"]    = "10–11am ET"
                     result["detected"]       = False
                     result["score"]          = 0
                     result["criteria"]       = []
