@@ -64,7 +64,7 @@ def _normalize_single(df, symbol):
 
 
 BEARISH_WATCH      = ["NVDA", "AMD"]  # full setup bearish watch
-BULLISH_WATCH      = ["NVDA"]         # full setup bullish watch
+BULLISH_WATCH      = ["MU", "NVDA"]   # full setup bullish watch
 ENGULF_BULL_WATCH  = []               # 2-condition bullish watch (empty)
 ENGULF_BEAR_WATCH  = ["MU"]           # 2-condition bearish watch (prime: 2pm only)
 
