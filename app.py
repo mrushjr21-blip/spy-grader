@@ -63,8 +63,9 @@ def _normalize_single(df, symbol):
     return df
 
 
-BEARISH_WATCH = ["MU", "NVDA", "AMD"]  # symbols to monitor for 3pm bearish setup
-BULLISH_WATCH = ["MU", "NVDA"]        # symbols to monitor for 10-11am bullish setup
+BEARISH_WATCH      = ["MU", "NVDA", "AMD"]  # full setup bearish watch
+BULLISH_WATCH      = ["MU", "NVDA"]         # full setup bullish watch
+ENGULF_BEAR_WATCH  = ["MU", "NVDA"]         # 2-condition bearish watch (AMD excluded)
 
 # Hardcoded backtest stats for specific symbol/direction/hour combos (full setup, 365 days)
 # Keys: (symbol, direction, ET_hour)
@@ -658,6 +659,8 @@ def grade():
 
         engulf_bear_watch = {}
         for sym, df_raw in bearish_5m.items():
+            if sym not in ENGULF_BEAR_WATCH:
+                continue
             sym_5m = add_indicators_5m(df_raw[df_raw.index.date == target_date].copy())
             result = score_sma_engulf(sym_5m, "bearish")
             result["price"] = round(float(sym_5m["close"].iloc[-1]), 2) if len(sym_5m) else None
@@ -667,6 +670,15 @@ def grade():
         for sym, df_raw in bearish_5m.items():
             sym_5m = add_indicators_5m(df_raw[df_raw.index.date == target_date].copy())
             result = score_afternoon_setup(sym_5m)
+            if sym == "AMD":
+                amd_hour = now_et.hour
+                result["in_window"] = amd_hour in (9, 10, 11)
+                if amd_hour in (9, 10, 11):
+                    result["window_quality"] = "prime"
+                    result["window_label"]   = "9:30–11am — AMD bearish prime window"
+                else:
+                    result["window_quality"] = "avoid"
+                    result["window_label"]   = "Outside AMD bearish window (prime: 9:30–11am)"
             result["price"] = round(float(sym_5m["close"].iloc[-1]), 2) if len(sym_5m) else None
             bearish_watch[sym] = result
 
