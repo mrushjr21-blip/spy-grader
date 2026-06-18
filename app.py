@@ -65,7 +65,8 @@ def _normalize_single(df, symbol):
 
 BEARISH_WATCH      = ["MU", "NVDA", "AMD"]  # full setup bearish watch
 BULLISH_WATCH      = ["MU", "NVDA"]         # full setup bullish watch
-ENGULF_BEAR_WATCH  = ["MU", "NVDA"]         # 2-condition bearish watch (AMD excluded)
+ENGULF_BULL_WATCH  = ["MU"]                 # 2-condition bullish watch (NVDA excluded)
+ENGULF_BEAR_WATCH  = ["MU"]                 # 2-condition bearish watch (NVDA, AMD excluded)
 
 # Hardcoded backtest stats for specific symbol/direction/hour combos (full setup, 365 days)
 # Keys: (symbol, direction, ET_hour)
@@ -652,6 +653,8 @@ def grade():
 
         engulf_bull_watch = {}
         for sym, df_raw in bullish_5m.items():
+            if sym not in ENGULF_BULL_WATCH:
+                continue
             sym_5m = add_indicators_5m(df_raw[df_raw.index.date == target_date].copy())
             result = score_sma_engulf(sym_5m, "bullish")
             result["price"] = round(float(sym_5m["close"].iloc[-1]), 2) if len(sym_5m) else None
@@ -691,6 +694,20 @@ def grade():
         for sym, df_raw in bullish_5m.items():
             sym_5m = add_indicators_5m(df_raw[df_raw.index.date == target_date].copy())
             result = score_morning_setup(sym_5m)
+            if sym == "NVDA":
+                nvda_hour = now_et.hour
+                result["in_window"] = nvda_hour in (10, 11)
+                if nvda_hour in (10, 11):
+                    result["window_quality"] = "prime"
+                    result["window_label"]   = "10–11am — NVDA bullish prime window"
+                else:
+                    result["window_quality"] = "avoid"
+                    result["window_label"]   = "Outside NVDA bullish window (prime: 10–11am)"
+                    result["suppressed"]     = True
+                    result["detected"]       = False
+                    result["score"]          = 0
+                    result["criteria"]       = []
+                    result["values"]         = {}
             result["price"] = round(float(sym_5m["close"].iloc[-1]), 2) if len(sym_5m) else None
             bullish_watch[sym] = result
 
