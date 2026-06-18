@@ -679,6 +679,11 @@ def grade():
                 else:
                     result["window_quality"] = "avoid"
                     result["window_label"]   = "Outside AMD bearish window (prime: 9:30–11am)"
+                    result["suppressed"]     = True
+                    result["detected"]       = False
+                    result["score"]          = 0
+                    result["criteria"]       = []
+                    result["values"]         = {}
             result["price"] = round(float(sym_5m["close"].iloc[-1]), 2) if len(sym_5m) else None
             bearish_watch[sym] = result
 
