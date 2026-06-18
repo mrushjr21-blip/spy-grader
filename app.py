@@ -63,10 +63,10 @@ def _normalize_single(df, symbol):
     return df
 
 
-BEARISH_WATCH      = ["NVDA", "AMD"]  # full setup bearish watch
-BULLISH_WATCH      = ["MU", "NVDA"]   # full setup bullish watch
-ENGULF_BULL_WATCH  = []               # 2-condition bullish watch (empty)
-ENGULF_BEAR_WATCH  = ["MU"]           # 2-condition bearish watch (prime: 2pm only)
+BEARISH_WATCH      = ["NVDA", "AMD", "MU"]  # full setup bearish watch
+BULLISH_WATCH      = ["MU", "NVDA"]         # full setup bullish watch
+ENGULF_BULL_WATCH  = []                     # 2-condition bullish watch (empty)
+ENGULF_BEAR_WATCH  = []                     # 2-condition bearish watch (empty)
 
 # Hardcoded backtest stats for specific symbol/direction/hour combos (full setup, 365 days)
 # Keys: (symbol, direction, ET_hour)
@@ -84,8 +84,8 @@ BACKTEST_STATS = {
     # NVDA full setup bearish (prime: 1-2pm)
     ("NVDA", "bearish", 13): {"wr_15m": 63, "wr_30m": 68, "wr_60m": 55, "avg_15m": "+0.04%", "avg_30m": "+0.04%", "avg_60m": "+0.02%", "mfe": "+0.38%", "note": "Best exit: +30m (68% win rate)"},
     ("NVDA", "bearish", 14): {"wr_15m": 64, "wr_30m": 55, "wr_60m": 45, "avg_15m": "+0.06%", "avg_30m": "+0.06%", "avg_60m": "-0.08%", "mfe": "+0.34%", "note": "Best exit: +15m (64% win rate)"},
-    # MU 2-condition bearish (prime: 2pm)
-    ("MU",   "engulf_bear", 14): {"wr_15m": 57, "wr_30m": 61, "wr_60m": 50, "avg_15m": "+0.05%", "avg_30m": "+0.16%", "avg_60m": "+0.02%", "mfe": "+0.73%", "note": "Best exit: +30m (61% win rate)"},
+    # MU full setup bearish (prime: 2pm)
+    ("MU",   "bearish", 14): {"wr_15m": 65, "wr_30m": 75, "wr_60m": 50, "avg_15m": "+0.13%", "avg_30m": "+0.28%", "avg_60m": "+0.17%", "mfe": "+0.70%", "note": "Best exit: +30m (75% win rate)"},
 }
 
 def fetch_spy_data():
@@ -715,6 +715,21 @@ def grade():
                     result["window_label"]   = "Outside AMD bearish window (prime: 9:30–11am)"
                     result["suppressed"]     = True
                     result["prime_label"]    = "9:30–11am ET"
+                    result["detected"]       = False
+                    result["score"]          = 0
+                    result["criteria"]       = []
+                    result["values"]         = {}
+            if sym == "MU":
+                mu_bear_hour = now_et.hour
+                result["in_window"] = mu_bear_hour == 14
+                if mu_bear_hour == 14:
+                    result["window_quality"] = "prime"
+                    result["window_label"]   = "2pm — MU bearish prime window"
+                else:
+                    result["window_quality"] = "avoid"
+                    result["window_label"]   = "Outside MU bearish window (prime: 2pm)"
+                    result["suppressed"]     = True
+                    result["prime_label"]    = "2pm ET"
                     result["detected"]       = False
                     result["score"]          = 0
                     result["criteria"]       = []
