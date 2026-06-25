@@ -9,6 +9,9 @@ from datetime import datetime, timedelta
 import pytz
 import os
 import traceback
+import threading
+import urllib.request
+import json as _json
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -31,8 +34,95 @@ class NumpyJSONProvider(DefaultJSONProvider):
 app.json_provider_class = NumpyJSONProvider
 app.json = NumpyJSONProvider(app)
 
-API_KEY = os.environ.get("ALPACA_API_KEY", "")
-API_SECRET = os.environ.get("ALPACA_SECRET_KEY", "")
+API_KEY           = os.environ.get("ALPACA_API_KEY", "")
+API_SECRET        = os.environ.get("ALPACA_SECRET_KEY", "")
+DISCORD_WEBHOOK   = os.environ.get("DISCORD_WEBHOOK_URL", "")
+
+# ─── Alert deduplication ─────────────────────────────────────────────────────
+# Tracks (sym, direction, signal_time, date) tuples already fired today.
+# Resets automatically because signal_time + date makes keys day-unique.
+_alerted = set()
+
+
+def _send_discord(payload: dict):
+    """Fire-and-forget Discord webhook POST on a background thread."""
+    if not DISCORD_WEBHOOK:
+        return
+    def _post():
+        try:
+            body = _json.dumps(payload).encode()
+            req  = urllib.request.Request(
+                DISCORD_WEBHOOK,
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=5)
+        except Exception:
+            pass
+    threading.Thread(target=_post, daemon=True).start()
+
+
+def _maybe_alert(sym, result, direction_label, now_et):
+    """
+    Send a Discord alert if this is a new prime-window signal not yet fired today.
+    Fires on full setup (100) or 3-of-4 (75) during the prime window.
+    """
+    if not DISCORD_WEBHOOK:
+        return
+    wq    = result.get("window_quality", "")
+    score = result.get("score", 0)
+    sig_t = result.get("signal_time")
+    price = result.get("price")
+
+    if wq != "prime" or score < 75 or not sig_t:
+        return
+
+    key = (sym, direction_label, sig_t, now_et.date())
+    if key in _alerted:
+        return
+    _alerted.add(key)
+
+    is_full    = score == 100
+    is_bull    = direction_label == "bullish"
+    color      = 0x4ade80 if is_bull else 0xf87171   # green / red
+    emoji      = "🟢" if is_bull else "🔴"
+    label      = "FULL SETUP" if is_full else "3 OF 4"
+    opt_lean   = "BUY CALLS" if is_bull else "BUY PUTS"
+    bars_ago   = result.get("bars_ago", 0)
+    ago_str    = f" ({bars_ago * 5}min ago)" if bars_ago else ""
+    price_str  = f"${price:.2f}" if price else "—"
+    window_lbl = result.get("window_label", "")
+
+    # Criteria summary
+    crit_lines = "\n".join(
+        f"{'✅' if c['pass'] else '❌'} {c['label']}"
+        for c in result.get("criteria", [])
+    )
+
+    # Backtest stats if available
+    bs      = result.get("backtest_stats")
+    bt_text = ""
+    if bs:
+        bt_text = (
+            f"\n**Backtest (365d):** "
+            f"+15m {bs['wr_15m']}% · +30m {bs['wr_30m']}% · +60m {bs['wr_60m']}%"
+            f"\n_{bs['note']}_"
+        )
+
+    _send_discord({
+        "embeds": [{
+            "title":       f"{emoji} {sym} — {label}",
+            "description": (
+                f"**{opt_lean}** · Score: **{score}/100** · {sig_t}{ago_str}\n"
+                f"Price: **{price_str}** · Window: {window_lbl}\n\n"
+                f"{crit_lines}"
+                f"{bt_text}"
+            ),
+            "color": color,
+            "footer": {"text": f"SPY Setup Grader · {now_et.strftime('%Y-%m-%d %H:%M ET')}"},
+        }]
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -1006,6 +1096,15 @@ def grade():
             s = BACKTEST_STATS.get((sym, "engulf_bear", now_hour))
             if s:
                 d["backtest_stats"] = s
+
+        # Discord alerts — only fire during live market hours, not replay
+        if not is_replay and is_market_hours:
+            for sym, d in bullish_watch.items():
+                if not d.get("suppressed"):
+                    _maybe_alert(sym, d, "bullish", now_et)
+            for sym, d in bearish_watch.items():
+                if not d.get("suppressed"):
+                    _maybe_alert(sym, d, "bearish", now_et)
 
         # Gap Fill and VWAP Pullback signals
         gap_fill = {}
