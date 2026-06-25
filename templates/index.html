@@ -1611,6 +1611,12 @@ async function loadData() {
     renderGapFill(data.gap_fill || {});
     renderVwapPullback(data.vwap_pullback || null);
 
+    // Discord alerts — only during live market hours, not replay
+    if (!data.is_replay && data.is_market_hours) {
+      for (const [sym, d] of Object.entries(data.bullish_watch || {})) maybeAlert(sym, d, 'bullish');
+      for (const [sym, d] of Object.entries(data.bearish_watch || {})) maybeAlert(sym, d, 'bearish');
+    }
+
   } catch (err) {
     const banner = document.getElementById('error-banner');
     banner.style.display = 'block';
@@ -1628,6 +1634,63 @@ async function loadData() {
         loadData();
       }
     }, 1000);
+  }
+}
+
+// ── Discord alerts (client-side) ─────────────────────────────────────────────
+const DISCORD_WEBHOOK = '{{ discord_webhook }}';
+const _alertedKeys = new Set();
+
+async function maybeAlert(sym, data, directionLabel) {
+  if (!DISCORD_WEBHOOK || DISCORD_WEBHOOK === 'None' || !DISCORD_WEBHOOK.startsWith('http')) return;
+  const wq    = data.window_quality || '';
+  const score = data.score || 0;
+  const sigT  = data.signal_time;
+  if (wq !== 'prime' || score < 75 || !sigT || data.suppressed) return;
+
+  const key = `${sym}-${directionLabel}-${sigT}-${new Date().toDateString()}`;
+  if (_alertedKeys.has(key)) return;
+  _alertedKeys.add(key);
+
+  const isBull   = directionLabel === 'bullish';
+  const isFull   = score === 100;
+  const emoji    = isBull ? '🟢' : '🔴';
+  const label    = isFull ? 'FULL SETUP' : '3 OF 4';
+  const optLean  = isBull ? 'BUY CALLS' : 'BUY PUTS';
+  const color    = isBull ? 0x4ade80 : 0xf87171;
+  const barsAgo  = data.bars_ago || 0;
+  const agoStr   = barsAgo > 0 ? ` (${barsAgo * 5}min ago)` : '';
+  const priceStr = data.price ? `$${data.price.toFixed(2)}` : '—';
+
+  const critLines = (data.criteria || []).map(c =>
+    `${c.pass ? '✅' : '❌'} ${c.label}`
+  ).join('\n');
+
+  const bs = data.backtest_stats;
+  const btText = bs
+    ? `\n**Backtest (365d):** +15m ${bs.wr_15m}% · +30m ${bs.wr_30m}% · +60m ${bs.wr_60m}%\n_${bs.note}_`
+    : '';
+
+  const payload = {
+    embeds: [{
+      title: `${emoji} ${sym} — ${label}`,
+      description:
+        `**${optLean}** · Score: **${score}/100** · ${sigT}${agoStr}\n` +
+        `Price: **${priceStr}** · Window: ${data.window_label || ''}\n\n` +
+        critLines + btText,
+      color,
+      footer: { text: `SPY Setup Grader · ${new Date().toLocaleTimeString('en-US', {timeZone:'America/New_York'})} ET` },
+    }]
+  };
+
+  try {
+    await fetch(DISCORD_WEBHOOK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch(e) {
+    console.warn('[discord] failed:', e);
   }
 }
 

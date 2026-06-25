@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Test Discord Alert</title>
+<style>
+  body { background:#0b0b0f; color:#d1d5db; font-family:'Segoe UI',system-ui,sans-serif; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; }
+  .box { background:#111118; border:1px solid #1f2028; border-radius:12px; padding:32px; text-align:center; max-width:400px; }
+  h2 { color:#f9fafb; margin:0 0 8px; }
+  p  { color:#6b7280; font-size:13px; margin:0 0 24px; }
+  button { background:#166534; color:#4ade80; border:1px solid #166534; padding:12px 28px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; }
+  button:hover { background:#15803d; }
+  #status { margin-top:16px; font-size:13px; color:#6b7280; }
+</style>
+</head>
+<body>
+<div class="box">
+  <h2>🟢 Discord Alert Test</h2>
+  <p>Sends a sample MU full-setup alert to your Discord channel directly from your browser.</p>
+  <button onclick="sendTest()">Send Test Alert</button>
+  <div id="status"></div>
+</div>
+<script>
+const WEBHOOK = '{{ discord_webhook }}';
+async function sendTest() {
+  document.getElementById('status').textContent = 'Sending…';
+  try {
+    const res = await fetch(WEBHOOK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        embeds: [{
+          title: '🟢 MU — FULL SETUP (test)',
+          description:
+            '**BUY CALLS** · Score: **100/100** · 10:15\n' +
+            'Price: **$92.45** · Window: 10am — MU bullish prime window\n\n' +
+            '✅ Engulfing candle body (current engulfs previous)\n' +
+            '✅ Engulfing candle closes above SMA10 (cross from below)\n' +
+            '✅ MACD histogram curling up or already crossed bullish\n' +
+            '✅ Double bottom in prior 20 bars (≤0.25% apart)\n\n' +
+            '**Backtest (365d):** +15m 75% · +30m 75% · +60m 75%\n' +
+            '_Best exit: hold full hour (+60m)_',
+          color: 0x4ade80,
+          footer: { text: 'SPY Setup Grader · TEST — not a real signal' },
+        }]
+      }),
+    });
+    if (res.ok) {
+      document.getElementById('status').textContent = '✅ Sent! Check your Discord channel.';
+    } else {
+      document.getElementById('status').textContent = '❌ Failed: ' + res.status + ' ' + res.statusText;
+    }
+  } catch(e) {
+    document.getElementById('status').textContent = '❌ Error: ' + e.message;
+  }
+}
+</script>
+</body>
+</html>
