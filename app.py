@@ -45,23 +45,22 @@ _alerted = set()
 
 
 def _send_discord(payload: dict):
-    """Fire-and-forget Discord webhook POST on a background thread."""
+    """Send Discord webhook POST synchronously so errors appear in logs."""
     if not DISCORD_WEBHOOK:
+        print("[discord] no webhook URL set")
         return
-    def _post():
-        try:
-            body = _json.dumps(payload).encode()
-            req  = urllib.request.Request(
-                DISCORD_WEBHOOK,
-                data=body,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            resp = urllib.request.urlopen(req, timeout=10)
-            print(f"[discord] status={resp.status}")
-        except Exception as exc:
-            print(f"[discord] error: {exc}")
-    threading.Thread(target=_post, daemon=True).start()
+    try:
+        body = _json.dumps(payload).encode()
+        req  = urllib.request.Request(
+            DISCORD_WEBHOOK,
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        resp = urllib.request.urlopen(req, timeout=10)
+        print(f"[discord] status={resp.status}")
+    except Exception as exc:
+        print(f"[discord] error: {exc}")
 
 
 def _maybe_alert(sym, result, direction_label, now_et):
