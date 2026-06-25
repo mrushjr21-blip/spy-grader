@@ -1432,12 +1432,20 @@ function renderGapFill(gapFillMap) {
   }
   for (const [sym, d] of Object.entries(gapFillMap)) {
     const hasSignal = d.status === 'signal';
-    const borderCol = hasSignal ? '#166534' : '#1f2028';
+    const noTrade   = ['no_gap','small','large','skip'].includes(d.status);
+    const hasDir    = d.direction && !noTrade;
+    const isPuts    = d.direction === 'short';
+    const dirBg     = isPuts ? '#2d0f0f' : '#052e16';
+    const dirCol    = isPuts ? '#f87171' : '#4ade80';
+    const dirBorder = isPuts ? '#7f1d1d' : '#166534';
+    const dirText   = isPuts ? '▼ BUY PUTS' : '▲ BUY CALLS';
+    const borderCol = hasSignal ? (isPuts ? '#7f1d1d' : '#166534') : '#1f2028';
+    const shadowCol = hasSignal ? (isPuts ? '#7f1d1d' : '#166534') : '';
     container.innerHTML += `
-      <div style="background:#111118;border:1px solid ${borderCol};border-radius:10px;overflow:hidden${hasSignal ? ';box-shadow:0 0 0 1px #166534' : ''}">
+      <div style="background:#111118;border:1px solid ${borderCol};border-radius:10px;overflow:hidden${hasSignal && shadowCol ? ';box-shadow:0 0 0 1px '+shadowCol : ''}">
         <div style="padding:10px 14px;border-bottom:1px solid #1a1a24;display:flex;align-items:center;justify-content:space-between">
-          <span style="font-size:14px;font-weight:700;color:#f9fafb">${sym}</span>
-          <span style="font-size:10px;color:#4b5563;text-transform:uppercase;letter-spacing:0.08em">Gap Fill</span>
+          <span style="font-size:14px;font-weight:700;color:#f9fafb">${sym} <span style="font-size:10px;font-weight:400;color:#4b5563">Gap Fill</span></span>
+          ${hasDir ? `<span style="font-size:12px;font-weight:800;padding:4px 12px;border-radius:20px;background:${dirBg};color:${dirCol};border:1px solid ${dirBorder};letter-spacing:0.06em">${dirText}</span>` : '<span style="font-size:10px;color:#4b5563">—</span>'}
         </div>
         ${gapFillSteps(sym, d)}
       </div>`;
@@ -1525,15 +1533,22 @@ function renderVwapPullback(d) {
     s4detail = d.entry ? `Entry $${d.entry} | Stop $${d.stop} | Target $${d.target}` : null;
   }
 
-  const hasSignal = d.status === 'signal';
+  const hasSignal  = d.status === 'signal';
+  const hasDir     = d.direction && !['waiting','no_trend','expired'].includes(d.status);
+  const isPuts     = d.direction === 'short';
+  const vDirBg     = isPuts ? '#2d0f0f' : '#052e16';
+  const vDirCol    = isPuts ? '#f87171' : '#4ade80';
+  const vDirBorder = isPuts ? '#7f1d1d' : '#166534';
+  const vDirText   = isPuts ? '▼ BUY PUTS' : '▲ BUY CALLS';
+  const vBorderCol = hasSignal ? (isPuts ? '#7f1d1d' : '#166534') : '#1f2028';
   container.innerHTML = `
-    <div style="background:#111118;border:1px solid ${hasSignal ? '#166534' : '#1f2028'};border-radius:10px;overflow:hidden${hasSignal ? ';box-shadow:0 0 0 1px #166534' : ''}">
+    <div style="background:#111118;border:1px solid ${vBorderCol};border-radius:10px;overflow:hidden${hasSignal ? ';box-shadow:0 0 0 1px '+vBorderCol : ''}">
       <div style="padding:10px 16px;border-bottom:1px solid #1a1a24;display:flex;align-items:center;justify-content:space-between">
         <div>
           <span style="font-size:14px;font-weight:700;color:#f9fafb">SPY</span>
           <span style="font-size:11px;color:#6b7280;margin-left:8px">VWAP First Pullback</span>
         </div>
-        <span style="font-size:10px;color:#4b5563;text-transform:uppercase;letter-spacing:0.08em">10:00 AM – 12:00 PM</span>
+        ${hasDir ? `<span style="font-size:12px;font-weight:800;padding:4px 12px;border-radius:20px;background:${vDirBg};color:${vDirCol};border:1px solid ${vDirBorder};letter-spacing:0.06em">${vDirText}</span>` : '<span style="font-size:10px;color:#4b5563">10:00 AM – 12:00 PM</span>'}
       </div>
       ${stepRow(s1state, s1label, s1detail)}
       ${stepRow(s2state, s2label, s2detail)}
