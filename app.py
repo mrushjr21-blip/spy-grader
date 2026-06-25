@@ -295,7 +295,11 @@ def fetch_spy_data():
         sym: fetch_et(sym, TimeFrame(5, TimeFrameUnit.Minute), now - timedelta(days=3))
         for sym in GAP_FILL_TICKERS
     }
-    return bars_1m, bearish_5m, bullish_5m, gap_fill_5m
+    gap_fill_1d = {
+        sym: fetch_et(sym, TimeFrame(1, TimeFrameUnit.Day), now - timedelta(days=7))
+        for sym in GAP_FILL_TICKERS
+    }
+    return bars_1m, bearish_5m, bullish_5m, gap_fill_5m, gap_fill_1d
 
 
 def add_indicators_5m(df):
@@ -821,7 +825,7 @@ def grade():
         })
 
     try:
-        bars_1m, bearish_5m, bullish_5m, gap_fill_5m = fetch_spy_data()
+        bars_1m, bearish_5m, bullish_5m, gap_fill_5m, gap_fill_1d = fetch_spy_data()
 
         now_et = datetime.now(ET)
         mo = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
@@ -1006,9 +1010,10 @@ def grade():
         # Gap Fill and VWAP Pullback signals
         gap_fill = {}
         for sym, df_raw in gap_fill_5m.items():
-            today_5m  = df_raw[df_raw.index.date == target_date].copy()
-            prev_bars  = df_raw[df_raw.index.date < target_date]
-            prior_close = float(prev_bars.iloc[-1]["close"]) if len(prev_bars) > 0 else None
+            today_5m    = df_raw[df_raw.index.date == target_date].copy()
+            daily_df    = gap_fill_1d.get(sym, pd.DataFrame())
+            prev_days   = daily_df[daily_df.index.date < target_date] if len(daily_df) > 0 else pd.DataFrame()
+            prior_close = float(prev_days.iloc[-1]["close"]) if len(prev_days) > 0 else None
             gap_fill[sym] = score_gap_fill(sym, today_5m, prior_close)
 
         spy_today = gap_fill_5m.get("SPY", pd.DataFrame())
