@@ -67,6 +67,7 @@ BEARISH_WATCH      = ["NVDA", "AMD", "MU"]                    # full setup beari
 BULLISH_WATCH      = ["MU", "NVDA", "NFLX", "AMAT", "HOOD"]  # full setup bullish watch
 ENGULF_BULL_WATCH  = []                     # 2-condition bullish watch (empty)
 ENGULF_BEAR_WATCH  = []                     # 2-condition bearish watch (empty)
+GAP_FILL_TICKERS   = ["SPY", "QQQ", "IWM"] # morning gap fill + VWAP pullback
 
 # Hardcoded backtest stats for specific symbol/direction/hour combos (full setup, 365 days)
 # Keys: (symbol, direction, ET_hour)
@@ -94,6 +95,179 @@ BACKTEST_STATS = {
     ("MU",   "bearish", 14): {"wr_15m": 65, "wr_30m": 75, "wr_60m": 50, "avg_15m": "+0.13%", "avg_30m": "+0.28%", "avg_60m": "+0.17%", "mfe": "+0.70%", "note": "Best exit: +30m (75% win rate)"},
 }
 
+# ---------------------------------------------------------------------------
+# Pattern: Morning Gap Fill (SPY / QQQ / IWM)
+# ---------------------------------------------------------------------------
+
+def score_gap_fill(ticker, df_5m_today, prior_close):
+    """
+    Gap fill signal: 0.3–0.4% gap at open, fade with opening drive filter.
+    Status: no_gap | small | large | watching | skip | signal | expired
+    """
+    result = {
+        "ticker":      ticker,
+        "status":      "no_gap",
+        "direction":   None,
+        "gap_pct":     None,
+        "entry":       None,
+        "stop":        None,
+        "target":      None,
+        "prior_close": round(prior_close, 2) if prior_close else None,
+    }
+
+    if prior_close is None or len(df_5m_today) < 1:
+        return result
+
+    bar0       = df_5m_today.iloc[0]
+    today_open = float(bar0["open"])
+    gap        = today_open - prior_close
+    gap_pct    = abs(gap) / prior_close
+    direction  = "short" if gap > 0 else "long"
+
+    result["gap_pct"]   = round(gap_pct * 100, 3)
+    result["direction"] = direction
+    result["entry"]     = round(today_open, 2)
+    result["target"]    = round(prior_close, 2)
+
+    if gap_pct < 0.001:
+        result["status"] = "no_gap"
+        return result
+    if gap_pct < 0.003:
+        result["status"] = "small"
+        return result
+    if gap_pct > 0.004:
+        result["status"] = "large"
+        return result
+
+    stop_dist    = 1.5 * abs(gap)
+    result["stop"] = round(
+        today_open + stop_dist if direction == "short" else today_open - stop_dist, 2
+    )
+
+    # Need first bar to close before checking opening drive filter
+    if len(df_5m_today) < 2:
+        result["status"] = "watching"
+        return result
+
+    bar0_close = float(df_5m_today.iloc[0]["close"])
+    bar0_open  = float(df_5m_today.iloc[0]["open"])
+    if direction == "short" and bar0_close > bar0_open:
+        result["status"] = "skip"   # gap up + first bar closes up = continuation
+        return result
+    if direction == "long" and bar0_close < bar0_open:
+        result["status"] = "skip"   # gap down + first bar closes down = continuation
+        return result
+
+    # Expired after 11 AM
+    if df_5m_today.iloc[-1].name.hour >= 11:
+        result["status"] = "expired"
+        return result
+
+    result["status"] = "signal"
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Pattern: VWAP First Pullback (SPY only)
+# ---------------------------------------------------------------------------
+
+def score_vwap_pullback(df_5m_today):
+    """
+    VWAP first pullback on SPY 5m.
+    Check trend at 30-min mark (bar 6); wait for first touch of VWAP.
+    Shorts only have real edge per backtest (WR 68%, PF 2.47).
+    Status: waiting | no_trend | watching | signal | expired
+    """
+    TREND_BARS = 6
+    MIN_DEV    = 0.003
+    MAX_DEV    = 0.005
+    VWAP_TOL   = 0.001
+
+    result = {
+        "status":    "waiting",
+        "direction": None,
+        "dev_pct":   None,
+        "vwap":      None,
+        "entry":     None,
+        "stop":      None,
+        "target":    None,
+    }
+
+    if len(df_5m_today) < 2:
+        return result
+
+    df = df_5m_today.copy()
+    df["typical"]    = (df["high"] + df["low"] + df["close"]) / 3
+    df["cum_tp_vol"] = (df["typical"] * df["volume"]).cumsum()
+    df["cum_vol"]    = df["volume"].cumsum()
+    df["vwap"]       = df["cum_tp_vol"] / df["cum_vol"].replace(0, np.nan)
+    df["tr"]         = pd.concat([
+        df["high"] - df["low"],
+        (df["high"] - df["close"].shift(1)).abs(),
+        (df["low"]  - df["close"].shift(1)).abs(),
+    ], axis=1).max(axis=1)
+    df["atr"] = df["tr"].rolling(14, min_periods=1).mean()
+
+    last     = df.iloc[-1]
+    last_vwap = round(float(last["vwap"]), 2)
+    result["vwap"] = last_vwap
+
+    if last.name.hour >= 12:
+        result["status"] = "expired"
+        return result
+
+    if len(df) <= TREND_BARS:
+        result["status"] = "waiting"
+        return result
+
+    trend_bar   = df.iloc[TREND_BARS]
+    trend_vwap  = float(trend_bar["vwap"])
+    trend_close = float(trend_bar["close"])
+    dev         = (trend_close - trend_vwap) / trend_vwap
+
+    result["dev_pct"]   = round(abs(dev) * 100, 2)
+    result["direction"] = "short" if dev < 0 else "long"
+
+    if abs(dev) < MIN_DEV or abs(dev) > MAX_DEV:
+        result["status"] = "no_trend"
+        return result
+
+    atr = float(df["atr"].iloc[-1])
+
+    # Scan for first VWAP touch after the 30-min trend mark
+    touched     = False
+    entry_price = None
+    direction   = result["direction"]
+    for i in range(TREND_BARS + 1, len(df)):
+        bar        = df.iloc[i]
+        lo, hi     = float(bar["low"]), float(bar["high"])
+        vwap_level = float(bar["vwap"])
+        if direction == "short" and hi >= vwap_level * (1 - VWAP_TOL):
+            touched     = True
+            entry_price = round(vwap_level, 2)
+            break
+        elif direction == "long" and lo <= vwap_level * (1 + VWAP_TOL):
+            touched     = True
+            entry_price = round(vwap_level, 2)
+            break
+
+    if not touched:
+        result["status"] = "watching"
+        result["entry"]  = last_vwap
+        return result
+
+    result["status"] = "signal"
+    result["entry"]  = entry_price
+    if direction == "short":
+        result["stop"]   = round(entry_price + atr, 2)
+        result["target"] = round(entry_price - 2 * atr, 2)
+    else:
+        result["stop"]   = round(entry_price - atr, 2)
+        result["target"] = round(entry_price + 2 * atr, 2)
+
+    return result
+
+
 def fetch_spy_data():
     client = StockHistoricalDataClient(API_KEY, API_SECRET)
     now = datetime.now(ET)
@@ -117,7 +291,11 @@ def fetch_spy_data():
         sym: fetch_et(sym, TimeFrame(5, TimeFrameUnit.Minute), now - timedelta(days=3))
         for sym in all_bull_syms
     }
-    return bars_1m, bearish_5m, bullish_5m
+    gap_fill_5m = {
+        sym: fetch_et(sym, TimeFrame(5, TimeFrameUnit.Minute), now - timedelta(days=3))
+        for sym in GAP_FILL_TICKERS
+    }
+    return bars_1m, bearish_5m, bullish_5m, gap_fill_5m
 
 
 def add_indicators_5m(df):
@@ -643,7 +821,7 @@ def grade():
         })
 
     try:
-        bars_1m, bearish_5m, bullish_5m = fetch_spy_data()
+        bars_1m, bearish_5m, bullish_5m, gap_fill_5m = fetch_spy_data()
 
         now_et = datetime.now(ET)
         mo = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
@@ -825,6 +1003,18 @@ def grade():
             if s:
                 d["backtest_stats"] = s
 
+        # Gap Fill and VWAP Pullback signals
+        gap_fill = {}
+        for sym, df_raw in gap_fill_5m.items():
+            today_5m  = df_raw[df_raw.index.date == target_date].copy()
+            prev_bars  = df_raw[df_raw.index.date < target_date]
+            prior_close = float(prev_bars.iloc[-1]["close"]) if len(prev_bars) > 0 else None
+            gap_fill[sym] = score_gap_fill(sym, today_5m, prior_close)
+
+        spy_today = gap_fill_5m.get("SPY", pd.DataFrame())
+        spy_today = spy_today[spy_today.index.date == target_date].copy() if len(spy_today) > 0 else pd.DataFrame()
+        vwap_pullback = score_vwap_pullback(spy_today)
+
         return jsonify({
             "success": True,
             "timestamp": now_et.strftime("%Y-%m-%d %H:%M:%S ET"),
@@ -834,6 +1024,8 @@ def grade():
             "bullish_watch": bullish_watch,
             "bearish_watch": bearish_watch,
             "engulf_bear_watch": engulf_bear_watch,
+            "gap_fill": gap_fill,
+            "vwap_pullback": vwap_pullback,
         })
 
     except Exception as e:

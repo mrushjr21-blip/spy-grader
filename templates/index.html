@@ -493,6 +493,13 @@
   <div id="engulf-bear-watch-cards"></div>
 
 
+  <!-- Gap Fill + VWAP section -->
+  <div style="margin-top:28px;margin-bottom:16px">
+    <div class="setup-section-title" style="color:#818cf8;border-bottom:1px solid #1f2028;padding-bottom:6px;margin-bottom:12px">Gap Fill + VWAP Pullback</div>
+    <div id="gap-fill-cards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px"></div>
+    <div id="vwap-pullback-card"></div>
+  </div>
+
   <!-- Signal Decay Curve -->
   <div style="margin-bottom:16px">
     <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #1f2028">
@@ -1268,6 +1275,138 @@ function renderEngulfWatch(watchMap, containerId, isBull) {
   }
 }
 
+// ── Gap Fill ─────────────────────────────────────────────────────────────────
+function renderGapFill(gapFillMap) {
+  const container = document.getElementById('gap-fill-cards');
+  container.innerHTML = '';
+
+  const statusCfg = {
+    signal:  { label: 'Signal',   bg: '#052e16', color: '#4ade80', border: '#166534' },
+    watching:{ label: 'Watching', bg: '#1a1020', color: '#c084fc', border: '#6b21a8' },
+    skip:    { label: 'Skipped',  bg: '#2d0f0f', color: '#f87171', border: '#7f1d1d' },
+    expired: { label: 'Expired',  bg: '#111',    color: '#6b7280', border: '#374151' },
+    small:   { label: 'Gap Small',bg: '#111',    color: '#6b7280', border: '#374151' },
+    large:   { label: 'Gap Large',bg: '#111',    color: '#6b7280', border: '#374151' },
+    no_gap:  { label: 'No Gap',   bg: '#111',    color: '#4b5563', border: '#2d2d3d' },
+  };
+
+  for (const [sym, d] of Object.entries(gapFillMap)) {
+    const cfg = statusCfg[d.status] || statusCfg['no_gap'];
+    const dirLabel = d.direction === 'short' ? '▼ Short' : d.direction === 'long' ? '▲ Long' : '—';
+    const dirColor = d.direction === 'short' ? '#f87171' : d.direction === 'long' ? '#4ade80' : '#6b7280';
+
+    let bodyHtml = '';
+    if (d.status === 'signal' || d.status === 'watching') {
+      bodyHtml = `
+        <div style="padding:10px 14px;display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;font-size:12px">
+          <div style="color:#4b5563">Gap</div>
+          <div style="color:#d1d5db;font-weight:600;text-align:right">${d.gap_pct ? d.gap_pct.toFixed(2) + '%' : '—'}</div>
+          <div style="color:#4b5563">Prior Close</div>
+          <div style="color:#d1d5db;text-align:right">$${d.prior_close ?? '—'}</div>
+          <div style="color:#4b5563">Entry</div>
+          <div style="color:#d1d5db;font-weight:600;text-align:right">$${d.entry ?? '—'}</div>
+          <div style="color:#4b5563">Stop</div>
+          <div style="color:#f87171;text-align:right">$${d.stop ?? '—'}</div>
+          <div style="color:#4b5563">Target</div>
+          <div style="color:#4ade80;text-align:right">$${d.target ?? '—'}</div>
+        </div>`;
+      if (d.status === 'watching') {
+        bodyHtml += `<div style="padding:0 14px 10px;font-size:11px;color:#6b7280">Waiting for first 5-min bar to close…</div>`;
+      }
+    } else if (d.status === 'skip') {
+      bodyHtml = `<div style="padding:10px 14px;font-size:11.5px;color:#6b7280">
+        Opening drive filter failed — first bar closed ${d.direction === 'short' ? 'up (continuation gap)' : 'down (continuation gap)'}.<br>
+        Gap was ${d.gap_pct ? d.gap_pct.toFixed(2) + '%' : ''}. Skip.
+      </div>`;
+    } else if (d.status === 'small' || d.status === 'large') {
+      bodyHtml = `<div style="padding:10px 14px;font-size:11.5px;color:#6b7280">
+        Gap ${d.gap_pct ? d.gap_pct.toFixed(2) + '%' : '0%'} — ${d.status === 'small' ? 'too small (need 0.3–0.4%)' : 'too large (need 0.3–0.4%)'}
+      </div>`;
+    } else {
+      bodyHtml = `<div style="padding:10px 14px;font-size:11.5px;color:#4b5563">No qualifying gap today.</div>`;
+    }
+
+    container.innerHTML += `
+      <div style="background:#111118;border:1px solid #1f2028;border-radius:10px;overflow:hidden">
+        <div style="padding:10px 14px;border-bottom:1px solid #1a1a24;display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:13px;font-weight:700;color:#f9fafb">${sym}</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            ${d.direction ? `<span style="font-size:11px;font-weight:700;color:${dirColor}">${dirLabel}</span>` : ''}
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:12px;background:${cfg.bg};color:${cfg.color};border:1px solid ${cfg.border};text-transform:uppercase;letter-spacing:0.06em">${cfg.label}</span>
+          </div>
+        </div>
+        ${bodyHtml}
+      </div>`;
+  }
+
+  if (Object.keys(gapFillMap).length === 0) {
+    container.innerHTML = '<div style="color:#4b5563;font-size:12px;padding:8px 0">No data</div>';
+  }
+}
+
+// ── VWAP Pullback ─────────────────────────────────────────────────────────────
+function renderVwapPullback(d) {
+  const container = document.getElementById('vwap-pullback-card');
+  if (!d) { container.innerHTML = ''; return; }
+
+  const statusCfg = {
+    signal:   { label: 'ENTRY SIGNAL', bg: '#052e16', color: '#4ade80', border: '#166534' },
+    watching: { label: 'Watching',     bg: '#1a1020', color: '#c084fc', border: '#6b21a8' },
+    waiting:  { label: 'Waiting',      bg: '#111',    color: '#6b7280', border: '#374151' },
+    no_trend: { label: 'No Trend',     bg: '#111',    color: '#4b5563', border: '#2d2d3d' },
+    expired:  { label: 'Expired',      bg: '#111',    color: '#4b5563', border: '#374151' },
+  };
+  const cfg = statusCfg[d.status] || statusCfg['waiting'];
+  const dirLabel = d.direction === 'short' ? '▼ Short' : d.direction === 'long' ? '▲ Long' : '';
+  const dirColor = d.direction === 'short' ? '#f87171' : '#4ade80';
+
+  let bodyHtml = '';
+  if (d.status === 'signal') {
+    const shortNote = d.direction === 'short' ? '<div style="font-size:11px;color:#c084fc;margin-top:6px">Shorts have 68% WR / PF 2.47 per backtest. Longs are borderline.</div>' : '';
+    bodyHtml = `
+      <div style="padding:12px 16px;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:12.5px">
+        <div style="color:#4b5563">VWAP</div>       <div style="color:#d1d5db;text-align:right">$${d.vwap ?? '—'}</div>
+        <div style="color:#4b5563">Dev at 30m</div> <div style="color:#818cf8;font-weight:700;text-align:right">${d.dev_pct ?? '—'}%</div>
+        <div style="color:#4b5563">Entry</div>      <div style="color:#d1d5db;font-weight:700;text-align:right">$${d.entry ?? '—'}</div>
+        <div style="color:#4b5563">Stop</div>       <div style="color:#f87171;text-align:right">$${d.stop ?? '—'}</div>
+        <div style="color:#4b5563">Target (2R)</div><div style="color:#4ade80;text-align:right">$${d.target ?? '—'}</div>
+      </div>
+      <div style="padding:0 16px 12px;font-size:11px;color:#6b7280">Move stop to breakeven after price moves 1R in your favor.${shortNote}</div>`;
+  } else if (d.status === 'watching') {
+    bodyHtml = `
+      <div style="padding:12px 16px;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:12.5px">
+        <div style="color:#4b5563">VWAP</div>       <div style="color:#d1d5db;text-align:right">$${d.vwap ?? '—'}</div>
+        <div style="color:#4b5563">Dev at 30m</div> <div style="color:#818cf8;font-weight:700;text-align:right">${d.dev_pct ?? '—'}%</div>
+        <div style="color:#4b5563">Target entry</div><div style="color:#c084fc;text-align:right">$${d.entry ?? d.vwap ?? '—'}</div>
+      </div>
+      <div style="padding:0 16px 12px;font-size:11px;color:#6b7280">Trend confirmed. Waiting for first pullback to VWAP. Entry cutoff: 12:00 PM.</div>`;
+  } else if (d.status === 'waiting') {
+    bodyHtml = `<div style="padding:12px 16px;font-size:11.5px;color:#6b7280">Waiting for 30-minute mark (10:00 AM) to assess trend vs VWAP.<br>
+      ${d.vwap ? '<span style="color:#4b5563">Current VWAP: </span><span style="color:#9ca3af">$' + d.vwap + '</span>' : ''}</div>`;
+  } else if (d.status === 'no_trend') {
+    bodyHtml = `<div style="padding:12px 16px;font-size:11.5px;color:#6b7280">
+      Deviation at 30m: <strong style="color:#818cf8">${d.dev_pct ?? '—'}%</strong> — needs 0.3–0.5% for a valid trend. No setup today.
+    </div>`;
+  } else {
+    bodyHtml = `<div style="padding:12px 16px;font-size:11.5px;color:#4b5563">Entry window closed (past 12:00 PM).</div>`;
+  }
+
+  container.innerHTML = `
+    <div style="background:#111118;border:1px solid #1f2028;border-radius:10px;overflow:hidden">
+      <div style="padding:10px 16px;border-bottom:1px solid #1a1a24;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <span style="font-size:13px;font-weight:700;color:#f9fafb">SPY</span>
+          <span style="font-size:11px;color:#6b7280;margin-left:8px">VWAP First Pullback</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${dirLabel ? `<span style="font-size:11px;font-weight:700;color:${dirColor}">${dirLabel}</span>` : ''}
+          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:12px;background:${cfg.bg};color:${cfg.color};border:1px solid ${cfg.border};text-transform:uppercase;letter-spacing:0.06em">${cfg.label}</span>
+        </div>
+      </div>
+      ${bodyHtml}
+    </div>`;
+}
+
 async function loadData() {
   clearInterval(countdownTimer);
   countdown = 60;
@@ -1313,6 +1452,8 @@ async function loadData() {
     renderBullishWatch(data.bullish_watch || {});
     renderBearishWatch(data.bearish_watch || {});
     renderEngulfWatch(data.engulf_bear_watch || {}, 'engulf-bear-watch-cards', false);
+    renderGapFill(data.gap_fill || {});
+    renderVwapPullback(data.vwap_pullback || null);
 
   } catch (err) {
     const banner = document.getElementById('error-banner');
