@@ -1441,11 +1441,17 @@ function renderGapFill(gapFillMap) {
     const dirText   = isPuts ? '▼ BUY PUTS' : '▲ BUY CALLS';
     const borderCol = hasSignal ? (isPuts ? '#7f1d1d' : '#166534') : '#1f2028';
     const shadowCol = hasSignal ? (isPuts ? '#7f1d1d' : '#166534') : '';
+    const priorCloseHtml = d.prior_close
+      ? `<span style="font-size:11px;color:#6b7280">Prior close <strong style="color:#9ca3af;font-size:12px">$${d.prior_close}</strong></span>`
+      : '';
     container.innerHTML += `
       <div style="background:#111118;border:1px solid ${borderCol};border-radius:10px;overflow:hidden${hasSignal && shadowCol ? ';box-shadow:0 0 0 1px '+shadowCol : ''}">
-        <div style="padding:10px 14px;border-bottom:1px solid #1a1a24;display:flex;align-items:center;justify-content:space-between">
-          <span style="font-size:14px;font-weight:700;color:#f9fafb">${sym} <span style="font-size:10px;font-weight:400;color:#4b5563">Gap Fill</span></span>
-          ${hasDir ? `<span style="font-size:12px;font-weight:800;padding:4px 12px;border-radius:20px;background:${dirBg};color:${dirCol};border:1px solid ${dirBorder};letter-spacing:0.06em">${dirText}</span>` : '<span style="font-size:10px;color:#4b5563">—</span>'}
+        <div style="padding:10px 14px;border-bottom:1px solid #1a1a24">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${priorCloseHtml ? '5px' : '0'}">
+            <span style="font-size:14px;font-weight:700;color:#f9fafb">${sym} <span style="font-size:10px;font-weight:400;color:#4b5563">Gap Fill</span></span>
+            ${hasDir ? `<span style="font-size:12px;font-weight:800;padding:4px 12px;border-radius:20px;background:${dirBg};color:${dirCol};border:1px solid ${dirBorder};letter-spacing:0.06em">${dirText}</span>` : '<span style="font-size:10px;color:#4b5563">—</span>'}
+          </div>
+          ${priorCloseHtml}
         </div>
         ${gapFillSteps(sym, d)}
       </div>`;
