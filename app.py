@@ -57,9 +57,10 @@ def _send_discord(payload: dict):
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            urllib.request.urlopen(req, timeout=5)
-        except Exception:
-            pass
+            resp = urllib.request.urlopen(req, timeout=10)
+            print(f"[discord] status={resp.status}")
+        except Exception as exc:
+            print(f"[discord] error: {exc}")
     threading.Thread(target=_post, daemon=True).start()
 
 
