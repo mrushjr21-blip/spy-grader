@@ -1136,6 +1136,30 @@ def grade():
         return jsonify({"success": False, "error": str(e), "trace": traceback.format_exc()})
 
 
+@app.route("/api/test-alert")
+def test_alert():
+    if not DISCORD_WEBHOOK:
+        return jsonify({"success": False, "error": "DISCORD_WEBHOOK_URL not set."})
+    _send_discord({
+        "embeds": [{
+            "title":       "🟢 MU — FULL SETUP (test)",
+            "description": (
+                "**BUY CALLS** · Score: **100/100** · 10:15\n"
+                "Price: **$92.45** · Window: 10am — MU bullish prime window\n\n"
+                "✅ Engulfing candle body (current engulfs previous)\n"
+                "✅ Engulfing candle closes above SMA10 (cross from below)\n"
+                "✅ MACD histogram curling up or already crossed bullish\n"
+                "✅ Double bottom in prior 20 bars (≤0.25% apart)\n\n"
+                "**Backtest (365d):** +15m 75% · +30m 75% · +60m 75%\n"
+                "_Best exit: hold full hour (+60m)_"
+            ),
+            "color": 0x4ade80,
+            "footer": {"text": "SPY Setup Grader · TEST ALERT — not a real signal"},
+        }]
+    })
+    return jsonify({"success": True, "message": "Test alert sent to Discord."})
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     app.run(debug=False, host="0.0.0.0", port=port)
