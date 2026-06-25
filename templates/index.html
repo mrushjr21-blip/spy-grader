@@ -455,6 +455,32 @@
     padding: 11px 18px 0; font-size: 11px; font-weight: 600;
     text-transform: uppercase; letter-spacing: 0.08em; color: #6b7280;
   }
+
+  /* ── Tabs ── */
+  .tab-bar {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid #1f2028;
+    margin-bottom: 20px;
+  }
+  .tab-btn {
+    padding: 8px 18px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #6b7280;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-bottom: -1px;
+  }
+  .tab-btn:hover { color: #9ca3af; }
+  .tab-btn.active { color: #f9fafb; border-bottom-color: #818cf8; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
 </style>
 </head>
 <body>
@@ -477,26 +503,26 @@
     ⏪ <strong>Replay mode</strong> — market is closed. Showing end-of-day snapshot from <span id="replay-date"></span>. Live data resumes at 9:30 AM ET.
   </div>
 
-  <!-- Bullish section -->
-  <div class="setup-section-title bullish">Bullish Setups</div>
+  <!-- Tab bar -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('setups', this)">Setups</button>
+    <button class="tab-btn" onclick="switchTab('gap-vwap', this)">Gap Fill + VWAP</button>
+  </div>
 
-  <!-- Bullish watch symbols -->
-  <div id="bullish-watch-cards"></div>
+  <!-- Tab 1: Existing setups -->
+  <div id="tab-setups" class="tab-panel active">
+    <div class="setup-section-title bullish">Bullish Setups</div>
+    <div id="bullish-watch-cards"></div>
+    <div class="setup-section-title bearish setup-section-bearish">Bearish Setups</div>
+    <div id="bearish-watch-cards"></div>
+    <div id="engulf-bear-watch-cards"></div>
+  </div>
 
-  <!-- Bearish section -->
-  <div class="setup-section-title bearish setup-section-bearish">Bearish Setups</div>
-
-  <!-- Bearish watch symbols -->
-  <div id="bearish-watch-cards"></div>
-
-  <!-- SMA + Engulf bearish watch -->
-  <div id="engulf-bear-watch-cards"></div>
-
-
-  <!-- Gap Fill + VWAP section -->
-  <div style="margin-top:28px;margin-bottom:16px">
-    <div class="setup-section-title" style="color:#818cf8;border-bottom:1px solid #1f2028;padding-bottom:6px;margin-bottom:12px">Gap Fill + VWAP Pullback</div>
-    <div id="gap-fill-cards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px"></div>
+  <!-- Tab 2: Gap Fill + VWAP -->
+  <div id="tab-gap-vwap" class="tab-panel">
+    <div class="setup-section-title" style="color:#818cf8;border-bottom:1px solid #1f2028;padding-bottom:6px;margin-bottom:12px">Morning Gap Fill</div>
+    <div id="gap-fill-cards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px"></div>
+    <div class="setup-section-title" style="color:#818cf8;border-bottom:1px solid #1f2028;padding-bottom:6px;margin-bottom:12px">VWAP First Pullback</div>
     <div id="vwap-pullback-card"></div>
   </div>
 
@@ -1273,6 +1299,14 @@ function renderEngulfWatch(watchMap, containerId, isBull) {
         </div>
       </div>`;
   }
+}
+
+// ── Tab switching ────────────────────────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
 }
 
 // ── Gap Fill ─────────────────────────────────────────────────────────────────
