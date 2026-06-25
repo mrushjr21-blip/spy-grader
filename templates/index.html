@@ -455,6 +455,32 @@
     padding: 11px 18px 0; font-size: 11px; font-weight: 600;
     text-transform: uppercase; letter-spacing: 0.08em; color: #6b7280;
   }
+
+  /* ── Tabs ── */
+  .tab-bar {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid #1f2028;
+    margin-bottom: 20px;
+  }
+  .tab-btn {
+    padding: 8px 18px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #6b7280;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-bottom: -1px;
+  }
+  .tab-btn:hover { color: #9ca3af; }
+  .tab-btn.active { color: #f9fafb; border-bottom-color: #818cf8; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
 </style>
 </head>
 <body>
@@ -477,21 +503,28 @@
     ⏪ <strong>Replay mode</strong> — market is closed. Showing end-of-day snapshot from <span id="replay-date"></span>. Live data resumes at 9:30 AM ET.
   </div>
 
-  <!-- Bullish section -->
-  <div class="setup-section-title bullish">Bullish Setups</div>
+  <!-- Tab bar -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('setups', this)">Setups</button>
+    <button class="tab-btn" onclick="switchTab('gap-vwap', this)">Gap Fill + VWAP</button>
+  </div>
 
-  <!-- Bullish watch symbols -->
-  <div id="bullish-watch-cards"></div>
+  <!-- Tab 1: Existing setups -->
+  <div id="tab-setups" class="tab-panel active">
+    <div class="setup-section-title bullish">Bullish Setups</div>
+    <div id="bullish-watch-cards"></div>
+    <div class="setup-section-title bearish setup-section-bearish">Bearish Setups</div>
+    <div id="bearish-watch-cards"></div>
+    <div id="engulf-bear-watch-cards"></div>
+  </div>
 
-  <!-- Bearish section -->
-  <div class="setup-section-title bearish setup-section-bearish">Bearish Setups</div>
-
-  <!-- Bearish watch symbols -->
-  <div id="bearish-watch-cards"></div>
-
-  <!-- SMA + Engulf bearish watch -->
-  <div id="engulf-bear-watch-cards"></div>
-
+  <!-- Tab 2: Gap Fill + VWAP -->
+  <div id="tab-gap-vwap" class="tab-panel">
+    <div class="setup-section-title" style="color:#818cf8;border-bottom:1px solid #1f2028;padding-bottom:6px;margin-bottom:12px">Morning Gap Fill</div>
+    <div id="gap-fill-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:20px"></div>
+    <div class="setup-section-title" style="color:#818cf8;border-bottom:1px solid #1f2028;padding-bottom:6px;margin-bottom:12px">VWAP First Pullback</div>
+    <div id="vwap-pullback-card"></div>
+  </div>
 
   <!-- Signal Decay Curve -->
   <div style="margin-bottom:16px">
@@ -1268,6 +1301,268 @@ function renderEngulfWatch(watchMap, containerId, isBull) {
   }
 }
 
+// ── Tab switching ────────────────────────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ── Shared step-list builder ─────────────────────────────────────────────────
+// state: 'done' | 'fail' | 'active' | 'pending'
+function stepRow(state, label, detail) {
+  const icons = {
+    done:    { icon: '✓', bg: '#052e16', color: '#4ade80', border: '#166534' },
+    fail:    { icon: '✗', bg: '#1f1010', color: '#6b7280', border: '#374151' },
+    active:  { icon: '→', bg: '#1a1020', color: '#c084fc', border: '#6b21a8' },
+    pending: { icon: '○', bg: '#111',    color: '#374151', border: '#2d2d3d' },
+  };
+  const s = icons[state] || icons.pending;
+  const rowBg    = state === 'active' ? 'background:#13131e;' : '';
+  const labelCol = state === 'done' ? '#d1d5db' : state === 'fail' ? '#4b5563' : state === 'active' ? '#f9fafb' : '#4b5563';
+  const detailCol= state === 'active' ? '#c084fc' : '#6b7280';
+  return `
+    <div style="display:flex;gap:12px;padding:10px 16px;border-bottom:1px solid #141420;${rowBg}">
+      <div style="flex-shrink:0;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;background:${s.bg};color:${s.color};border:1px solid ${s.border};margin-top:1px">${s.icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12.5px;font-weight:600;color:${labelCol};margin-bottom:${detail ? '3px' : '0'}">${label}</div>
+        ${detail ? `<div style="font-size:11.5px;color:${detailCol};line-height:1.5">${detail}</div>` : ''}
+      </div>
+    </div>`;
+}
+
+// ── Gap Fill ─────────────────────────────────────────────────────────────────
+function gapFillSteps(sym, d) {
+  const dirLabel = d.direction === 'short' ? '▼ Short' : '▲ Long';
+  const dirColor = d.direction === 'short' ? '#f87171' : '#4ade80';
+  const dirSpan  = d.direction ? `<span style="color:${dirColor};font-weight:700">${dirLabel}</span>` : '';
+
+  // Step 1: Gap check at open
+  let s1state, s1label, s1detail;
+  if (!d.gap_pct || d.status === 'no_gap') {
+    s1state  = 'fail';
+    s1label  = 'Gap check at open';
+    s1detail = 'No gap today (gap &lt;0.1%). Nothing to do.';
+  } else if (d.status === 'small') {
+    s1state  = 'fail';
+    s1label  = 'Gap check at open';
+    s1detail = `Gap is ${d.gap_pct.toFixed(2)}% — too small. Need 0.3–0.4%. Skip.`;
+  } else if (d.status === 'large') {
+    s1state  = 'fail';
+    s1label  = 'Gap check at open';
+    s1detail = `Gap is ${d.gap_pct.toFixed(2)}% — too large. Need 0.3–0.4%. Skip.`;
+  } else {
+    s1state  = 'done';
+    s1label  = `Gap: ${d.gap_pct.toFixed(2)}% ${dirSpan}`;
+    s1detail = `Open $${d.entry} vs prior close $${d.prior_close}. Target: $${d.target}`;
+  }
+
+  // Step 2: Opening drive filter (first 5-min bar)
+  let s2state, s2label, s2detail;
+  const noGap = ['no_gap','small','large'].includes(d.status);
+  if (noGap) {
+    s2state  = 'pending';
+    s2label  = 'Opening drive filter (9:35 AM)';
+    s2detail = null;
+  } else if (d.status === 'watching') {
+    s2state  = 'active';
+    s2label  = 'Opening drive filter (9:35 AM)';
+    s2detail = d.direction === 'short'
+      ? 'Wait for 9:35 AM. First 5-min bar must close <strong style="color:#f9fafb">DOWN</strong> (red candle) to confirm fade. If it closes up → skip.'
+      : 'Wait for 9:35 AM. First 5-min bar must close <strong style="color:#f9fafb">UP</strong> (green candle) to confirm fade. If it closes down → skip.';
+  } else if (d.status === 'skip') {
+    s2state  = 'fail';
+    s2label  = 'Opening drive filter — FAILED';
+    s2detail = d.direction === 'short'
+      ? 'First bar closed UP — gap is continuing, not fading. No trade.'
+      : 'First bar closed DOWN — gap is continuing, not fading. No trade.';
+  } else {
+    s2state  = 'done';
+    s2label  = 'Opening drive filter — PASSED';
+    s2detail = d.direction === 'short'
+      ? 'First bar closed DOWN confirming the fade.'
+      : 'First bar closed UP confirming the fade.';
+  }
+
+  // Step 3: Enter the trade
+  let s3state, s3label, s3detail;
+  if (noGap || d.status === 'watching' || d.status === 'skip') {
+    s3state  = noGap || d.status === 'skip' ? 'fail' : 'pending';
+    s3label  = 'Enter at 9:35 AM';
+    s3detail = null;
+  } else if (d.status === 'signal') {
+    s3state  = 'active';
+    s3label  = `Enter ${dirLabel} at market open`;
+    s3detail = `Entry: <strong style="color:#f9fafb">$${d.entry}</strong> &nbsp;|&nbsp; Stop: <strong style="color:#f87171">$${d.stop}</strong> &nbsp;|&nbsp; Target: <strong style="color:#4ade80">$${d.target}</strong><br>Risk = ${d.stop && d.entry ? Math.abs(d.stop - d.entry).toFixed(2) : '—'} per share. Options: buy ${d.direction === 'short' ? 'ATM puts' : 'ATM calls'}.`;
+  } else {
+    s3state  = 'done';
+    s3label  = 'Trade entered';
+    s3detail = `Entry $${d.entry} | Stop $${d.stop} | Target $${d.target}`;
+  }
+
+  // Step 4: Manage / exit
+  let s4state, s4label, s4detail;
+  if (['no_gap','small','large','skip','watching'].includes(d.status)) {
+    s4state  = 'pending';
+    s4label  = 'Manage trade → exit by 11:00 AM';
+    s4detail = null;
+  } else if (d.status === 'signal') {
+    s4state  = 'pending';
+    s4label  = 'Manage trade → exit by 11:00 AM';
+    s4detail = 'Hold until target fills OR stop hits OR 11 AM — whichever comes first. No exceptions.';
+  } else {
+    s4state  = 'done';
+    s4label  = 'Window closed (11:00 AM)';
+    s4detail = null;
+  }
+
+  return stepRow(s1state, s1label, s1detail)
+       + stepRow(s2state, s2label, s2detail)
+       + stepRow(s3state, s3label, s3detail)
+       + stepRow(s4state, s4label, s4detail);
+}
+
+function renderGapFill(gapFillMap) {
+  const container = document.getElementById('gap-fill-cards');
+  container.innerHTML = '';
+  if (Object.keys(gapFillMap).length === 0) {
+    container.innerHTML = '<div style="color:#4b5563;font-size:12px;padding:8px 0">No data</div>';
+    return;
+  }
+  for (const [sym, d] of Object.entries(gapFillMap)) {
+    const hasSignal = d.status === 'signal';
+    const noTrade   = ['no_gap','small','large','skip'].includes(d.status);
+    const hasDir    = d.direction && !noTrade;
+    const isPuts    = d.direction === 'short';
+    const dirBg     = isPuts ? '#2d0f0f' : '#052e16';
+    const dirCol    = isPuts ? '#f87171' : '#4ade80';
+    const dirBorder = isPuts ? '#7f1d1d' : '#166534';
+    const dirText   = isPuts ? '▼ BUY PUTS' : '▲ BUY CALLS';
+    const borderCol = hasSignal ? (isPuts ? '#7f1d1d' : '#166534') : '#1f2028';
+    const shadowCol = hasSignal ? (isPuts ? '#7f1d1d' : '#166534') : '';
+    const priorCloseHtml = d.prior_close
+      ? `<span style="font-size:11px;color:#6b7280">Prior close <strong style="color:#9ca3af;font-size:12px">$${d.prior_close}</strong></span>`
+      : '';
+    container.innerHTML += `
+      <div style="background:#111118;border:1px solid ${borderCol};border-radius:10px;overflow:hidden${hasSignal && shadowCol ? ';box-shadow:0 0 0 1px '+shadowCol : ''}">
+        <div style="padding:10px 14px;border-bottom:1px solid #1a1a24">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${priorCloseHtml ? '5px' : '0'}">
+            <span style="font-size:14px;font-weight:700;color:#f9fafb">${sym} <span style="font-size:10px;font-weight:400;color:#4b5563">Gap Fill</span></span>
+            ${hasDir ? `<span style="font-size:12px;font-weight:800;padding:4px 12px;border-radius:20px;background:${dirBg};color:${dirCol};border:1px solid ${dirBorder};letter-spacing:0.06em">${dirText}</span>` : '<span style="font-size:10px;color:#4b5563">—</span>'}
+          </div>
+          ${priorCloseHtml}
+        </div>
+        ${gapFillSteps(sym, d)}
+      </div>`;
+  }
+}
+
+// ── VWAP Pullback ─────────────────────────────────────────────────────────────
+function renderVwapPullback(d) {
+  const container = document.getElementById('vwap-pullback-card');
+  if (!d) { container.innerHTML = ''; return; }
+
+  const dirLabel = d.direction === 'short' ? '▼ Short' : d.direction === 'long' ? '▲ Long' : '';
+  const dirColor = d.direction === 'short' ? '#f87171' : '#4ade80';
+  const dirSpan  = dirLabel ? `<span style="color:${dirColor};font-weight:700">${dirLabel}</span>` : '';
+
+  // Step 1: Wait for 10:00 AM
+  let s1state, s1label, s1detail;
+  if (d.status === 'waiting') {
+    s1state  = 'active';
+    s1label  = 'Wait for 10:00 AM (30-min mark)';
+    s1detail = `VWAP is still building. Current VWAP: <strong style="color:#f9fafb">$${d.vwap ?? '—'}</strong><br>Come back at 10:00 AM to check if SPY has a 0.3–0.5% trend vs VWAP.`;
+  } else {
+    s1state  = 'done';
+    s1label  = '10:00 AM reached';
+    s1detail = null;
+  }
+
+  // Step 2: Check trend deviation
+  let s2state, s2label, s2detail;
+  if (d.status === 'waiting') {
+    s2state  = 'pending';
+    s2label  = 'Check trend at 10:00 AM';
+    s2detail = null;
+  } else if (d.status === 'no_trend') {
+    s2state  = 'fail';
+    s2label  = 'Trend check — no setup';
+    s2detail = `Deviation at 30m: <strong style="color:#818cf8">${d.dev_pct ?? '—'}%</strong>${d.direction ? ` (${dirSpan})` : ''}. Need 0.3–0.5%. No trade today.`;
+  } else if (d.status === 'expired' && !d.dev_pct) {
+    s2state  = 'fail';
+    s2label  = 'Trend check — no setup';
+    s2detail = 'Deviation was out of range at 10:00 AM. No trade.';
+  } else {
+    const shortNote = d.direction === 'short' ? ' <span style="color:#c084fc">(Short side — best edge per backtest)</span>' : ' <span style="color:#fbbf24">(Long side — weaker edge, use smaller size)</span>';
+    s2state  = 'done';
+    s2label  = `Trend: ${d.dev_pct ?? '—'}% ${dirSpan}`;
+    s2detail = `SPY is ${d.dev_pct}% ${d.direction === 'short' ? 'below' : 'above'} VWAP ($${d.vwap}).${shortNote}`;
+  }
+
+  // Step 3: Wait for VWAP touch
+  let s3state, s3label, s3detail;
+  if (['waiting','no_trend'].includes(d.status)) {
+    s3state  = 'pending';
+    s3label  = 'Wait for first pullback to VWAP';
+    s3detail = null;
+  } else if (d.status === 'watching') {
+    s3state  = 'active';
+    s3label  = 'Watch for VWAP touch';
+    s3detail = `${dirSpan} trend confirmed. Watch for SPY to pull back to VWAP at <strong style="color:#f9fafb">$${d.entry ?? d.vwap}</strong>.<br>Enter ${d.direction === 'short' ? 'SHORT (buy puts)' : 'LONG (buy calls)'} when price touches within 0.1% of VWAP. Cutoff: <strong>12:00 PM</strong>.`;
+  } else if (d.status === 'signal' || (d.status === 'expired' && d.entry)) {
+    s3state  = 'done';
+    s3label  = 'VWAP touch occurred';
+    s3detail = `Entry at $${d.entry}`;
+  } else {
+    s3state  = 'fail';
+    s3label  = 'No VWAP touch before noon';
+    s3detail = 'Price never pulled back to VWAP within the window. No trade.';
+  }
+
+  // Step 4: Enter + manage
+  let s4state, s4label, s4detail;
+  if (d.status === 'signal') {
+    const be = d.entry && d.stop ? (d.direction === 'short'
+      ? (d.entry - Math.abs(d.stop - d.entry)).toFixed(2)
+      : (d.entry + Math.abs(d.stop - d.entry)).toFixed(2)) : '—';
+    s4state  = 'active';
+    s4label  = `Enter ${dirLabel} now`;
+    s4detail = `Entry: <strong style="color:#f9fafb">$${d.entry}</strong> &nbsp;|&nbsp; Stop: <strong style="color:#f87171">$${d.stop}</strong> &nbsp;|&nbsp; Target (2R): <strong style="color:#4ade80">$${d.target}</strong><br>At 1R profit ($${be}), move stop to breakeven. Buy ${d.direction === 'short' ? 'ATM puts' : 'ATM calls'}, 0–1 DTE.`;
+  } else if (['waiting','no_trend','watching'].includes(d.status) || (d.status === 'expired' && !d.entry)) {
+    s4state  = d.status === 'watching' ? 'pending' : 'pending';
+    s4label  = 'Enter + manage trade';
+    s4detail = null;
+  } else {
+    s4state  = 'done';
+    s4label  = 'Trade entered';
+    s4detail = d.entry ? `Entry $${d.entry} | Stop $${d.stop} | Target $${d.target}` : null;
+  }
+
+  const hasSignal  = d.status === 'signal';
+  const hasDir     = d.direction && !['waiting','no_trend','expired'].includes(d.status);
+  const isPuts     = d.direction === 'short';
+  const vDirBg     = isPuts ? '#2d0f0f' : '#052e16';
+  const vDirCol    = isPuts ? '#f87171' : '#4ade80';
+  const vDirBorder = isPuts ? '#7f1d1d' : '#166534';
+  const vDirText   = isPuts ? '▼ BUY PUTS' : '▲ BUY CALLS';
+  const vBorderCol = hasSignal ? (isPuts ? '#7f1d1d' : '#166534') : '#1f2028';
+  container.innerHTML = `
+    <div style="background:#111118;border:1px solid ${vBorderCol};border-radius:10px;overflow:hidden${hasSignal ? ';box-shadow:0 0 0 1px '+vBorderCol : ''}">
+      <div style="padding:10px 16px;border-bottom:1px solid #1a1a24;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <span style="font-size:14px;font-weight:700;color:#f9fafb">SPY</span>
+          <span style="font-size:11px;color:#6b7280;margin-left:8px">VWAP First Pullback</span>
+        </div>
+        ${hasDir ? `<span style="font-size:12px;font-weight:800;padding:4px 12px;border-radius:20px;background:${vDirBg};color:${vDirCol};border:1px solid ${vDirBorder};letter-spacing:0.06em">${vDirText}</span>` : '<span style="font-size:10px;color:#4b5563">10:00 AM – 12:00 PM</span>'}
+      </div>
+      ${stepRow(s1state, s1label, s1detail)}
+      ${stepRow(s2state, s2label, s2detail)}
+      ${stepRow(s3state, s3label, s3detail)}
+      ${stepRow(s4state, s4label, s4detail)}
+    </div>`;
+}
+
 async function loadData() {
   clearInterval(countdownTimer);
   countdown = 60;
@@ -1313,6 +1608,8 @@ async function loadData() {
     renderBullishWatch(data.bullish_watch || {});
     renderBearishWatch(data.bearish_watch || {});
     renderEngulfWatch(data.engulf_bear_watch || {}, 'engulf-bear-watch-cards', false);
+    renderGapFill(data.gap_fill || {});
+    renderVwapPullback(data.vwap_pullback || null);
 
   } catch (err) {
     const banner = document.getElementById('error-banner');
