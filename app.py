@@ -222,10 +222,10 @@ def score_gap_fill(ticker, df_5m_today, prior_close):
     if gap_pct < 0.001:
         result["status"] = "no_gap"
         return result
-    if gap_pct < 0.003:
+    if gap_pct < 0.005:
         result["status"] = "small"
         return result
-    if gap_pct > 0.004:
+    if gap_pct > 0.006:
         result["status"] = "large"
         return result
 
