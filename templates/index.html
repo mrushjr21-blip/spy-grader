@@ -522,7 +522,7 @@
   <div id="tab-gap-vwap" class="tab-panel">
     <div class="setup-section-title" style="color:#818cf8;border-bottom:1px solid #1f2028;padding-bottom:6px;margin-bottom:12px">Morning Gap Fill</div>
     <div id="gap-fill-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:20px"></div>
-    <div class="setup-section-title" style="color:#818cf8;border-bottom:1px solid #1f2028;padding-bottom:6px;margin-bottom:12px">VWAP First Pullback</div>
+    <div class="setup-section-title" style="color:#818cf8;border-bottom:1px solid #1f2028;padding-bottom:6px;margin-bottom:12px">VWAP First Pullback — Shorts Only (68% Win Rate)</div>
     <div id="vwap-pullback-card"></div>
   </div>
 
@@ -1463,8 +1463,8 @@ function renderVwapPullback(d) {
   const container = document.getElementById('vwap-pullback-card');
   if (!d) { container.innerHTML = ''; return; }
 
-  const dirLabel = d.direction === 'short' ? '▼ Short' : d.direction === 'long' ? '▲ Long' : '';
-  const dirColor = d.direction === 'short' ? '#f87171' : '#4ade80';
+  const dirLabel = d.direction === 'short' ? '▼ Short (Puts)' : d.direction === 'long' ? '▲ Long' : '';
+  const dirColor = '#f87171';
   const dirSpan  = dirLabel ? `<span style="color:${dirColor};font-weight:700">${dirLabel}</span>` : '';
 
   // Step 1: Wait for 10:00 AM
@@ -1488,16 +1488,15 @@ function renderVwapPullback(d) {
   } else if (d.status === 'no_trend') {
     s2state  = 'fail';
     s2label  = 'Trend check — no setup';
-    s2detail = `Deviation at 30m: <strong style="color:#818cf8">${d.dev_pct ?? '—'}%</strong>${d.direction ? ` (${dirSpan})` : ''}. Need 0.3–0.5%. No trade today.`;
+    s2detail = `Deviation at 30m: <strong style="color:#818cf8">${d.dev_pct ?? '—'}%</strong>${d.direction ? ` (${dirSpan})` : ''}. Need SPY to be 0.3–0.5% <em>below</em> VWAP (shorts only, 68% win rate). No trade today.`;
   } else if (d.status === 'expired' && !d.dev_pct) {
     s2state  = 'fail';
     s2label  = 'Trend check — no setup';
     s2detail = 'Deviation was out of range at 10:00 AM. No trade.';
   } else {
-    const shortNote = d.direction === 'short' ? ' <span style="color:#c084fc">(Short side — best edge per backtest)</span>' : ' <span style="color:#fbbf24">(Long side — weaker edge, use smaller size)</span>';
     s2state  = 'done';
-    s2label  = `Trend: ${d.dev_pct ?? '—'}% ${dirSpan}`;
-    s2detail = `SPY is ${d.dev_pct}% ${d.direction === 'short' ? 'below' : 'above'} VWAP ($${d.vwap}).${shortNote}`;
+    s2label  = `Trend: ${d.dev_pct ?? '—'}% below VWAP ${dirSpan}`;
+    s2detail = `SPY is ${d.dev_pct}% below VWAP ($${d.vwap}). <span style="color:#f87171;font-weight:600">Short side — 68% win rate, PF 2.47</span>`;
   }
 
   // Step 3: Wait for VWAP touch
@@ -1509,7 +1508,7 @@ function renderVwapPullback(d) {
   } else if (d.status === 'watching') {
     s3state  = 'active';
     s3label  = 'Watch for VWAP touch';
-    s3detail = `${dirSpan} trend confirmed. Watch for SPY to pull back to VWAP at <strong style="color:#f9fafb">$${d.entry ?? d.vwap}</strong>.<br>Enter ${d.direction === 'short' ? 'SHORT (buy puts)' : 'LONG (buy calls)'} when price touches within 0.1% of VWAP. Cutoff: <strong>12:00 PM</strong>.`;
+    s3detail = `Short trend confirmed (68% win rate). Watch for SPY to pull back UP to VWAP at <strong style="color:#f9fafb">$${d.entry ?? d.vwap}</strong>.<br>Enter <strong style="color:#f87171">SHORT (buy puts)</strong> when price touches within 0.1% of VWAP. Cutoff: <strong>12:00 PM</strong>.`;
   } else if (d.status === 'signal' || (d.status === 'expired' && d.entry)) {
     s3state  = 'done';
     s3label  = 'VWAP touch occurred';
@@ -1552,7 +1551,7 @@ function renderVwapPullback(d) {
       <div style="padding:10px 16px;border-bottom:1px solid #1a1a24;display:flex;align-items:center;justify-content:space-between">
         <div>
           <span style="font-size:14px;font-weight:700;color:#f9fafb">SPY</span>
-          <span style="font-size:11px;color:#6b7280;margin-left:8px">VWAP First Pullback</span>
+          <span style="font-size:11px;color:#6b7280;margin-left:8px">VWAP First Pullback <span style="color:#f87171">· Shorts only · 68% WR</span></span>
         </div>
         ${hasDir ? `<span style="font-size:12px;font-weight:800;padding:4px 12px;border-radius:20px;background:${vDirBg};color:${vDirCol};border:1px solid ${vDirBorder};letter-spacing:0.06em">${vDirText}</span>` : '<span style="font-size:10px;color:#4b5563">10:00 AM – 12:00 PM</span>'}
       </div>

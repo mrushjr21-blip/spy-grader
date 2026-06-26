@@ -318,6 +318,11 @@ def score_vwap_pullback(df_5m_today):
     result["dev_pct"]   = round(abs(dev) * 100, 2)
     result["direction"] = "short" if dev < 0 else "long"
 
+    # Longs have no backtested edge — only trade the short side
+    if result["direction"] == "long":
+        result["status"] = "no_trend"
+        return result
+
     if abs(dev) < MIN_DEV or abs(dev) > MAX_DEV:
         result["status"] = "no_trend"
         return result
