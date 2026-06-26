@@ -1347,11 +1347,11 @@ function gapFillSteps(sym, d) {
   } else if (d.status === 'small') {
     s1state  = 'fail';
     s1label  = 'Gap check at open';
-    s1detail = `Gap is ${d.gap_pct.toFixed(2)}% — too small. Need 0.5–0.6%. Skip.`;
+    s1detail = `Gap is ${d.gap_pct.toFixed(2)}% — too small. Need 0.3–0.5%. Skip.`;
   } else if (d.status === 'large') {
     s1state  = 'fail';
     s1label  = 'Gap check at open';
-    s1detail = `Gap is ${d.gap_pct.toFixed(2)}% — too large. Need 0.5–0.6%. Skip.`;
+    s1detail = `Gap is ${d.gap_pct.toFixed(2)}% — too large. Need 0.3–0.5%. Skip.`;
   } else {
     s1state  = 'done';
     s1label  = `Gap: ${d.gap_pct.toFixed(2)}% ${dirSpan}`;
