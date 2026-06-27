@@ -199,23 +199,56 @@ GAP_FILL_STATS = {
 def score_gap_fill(ticker, df_5m_today, prior_close):
     """
     Gap fill signal: 0.3–0.5% gap at open, fade with opening drive filter.
-    Status: no_gap | small | large | watching | skip | signal | expired
+    Status: no_gap | small | large | pre_market | watching | skip | signal | expired
     """
     result = {
-        "ticker":      ticker,
-        "status":      "no_gap",
-        "direction":   None,
-        "gap_pct":     None,
-        "entry":       None,
-        "stop":        None,
-        "target":      None,
-        "prior_close": round(prior_close, 2) if prior_close else None,
+        "ticker":         ticker,
+        "status":         "no_gap",
+        "direction":      None,
+        "gap_pct":        None,
+        "entry":          None,
+        "stop":           None,
+        "target":         None,
+        "prior_close":    round(prior_close, 2) if prior_close else None,
         "backtest_stats": GAP_FILL_STATS.get(ticker),
+        "pre_market":     False,
+        "pre_market_time": None,
     }
 
     if prior_close is None or len(df_5m_today) < 1:
         return result
 
+    # Pre-market: all bars before 9:30am — use latest bar close as projected open
+    last_bar = df_5m_today.iloc[-1]
+    last_time = last_bar.name
+    if last_time.hour < 9 or (last_time.hour == 9 and last_time.minute < 30):
+        current_price = float(last_bar["close"])
+        gap           = current_price - prior_close
+        gap_pct       = abs(gap) / prior_close
+        direction     = "short" if gap > 0 else "long"
+        result.update({
+            "pre_market":      True,
+            "pre_market_time": last_time.strftime("%H:%M"),
+            "direction":       direction,
+            "gap_pct":         round(gap_pct * 100, 3),
+            "entry":           round(current_price, 2),
+            "target":          round(prior_close, 2),
+        })
+        if gap_pct < 0.001:
+            result["status"] = "no_gap"
+        elif gap_pct < 0.003:
+            result["status"] = "small"
+        elif gap_pct > 0.005:
+            result["status"] = "large"
+        else:
+            result["status"] = "pre_market"
+            if 0.003 <= gap_pct < 0.004:
+                result["bucket_note"] = "0.3-0.4% bucket — strongest at +15m (67% win rate)"
+            elif 0.004 <= gap_pct < 0.005:
+                result["bucket_note"] = "0.4-0.5% bucket — better at +30m (69% win rate)"
+        return result
+
+    # Market hours logic
     bar0       = df_5m_today.iloc[0]
     today_open = float(bar0["open"])
     gap        = today_open - prior_close
@@ -938,6 +971,11 @@ def grade():
         mo = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
         mc = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
         is_market_hours = mo <= now_et <= mc and now_et.weekday() < 5
+        is_pre_market = (
+            now_et.weekday() < 5 and
+            now_et.hour >= 8 and
+            (now_et.hour < 9 or (now_et.hour == 9 and now_et.minute < 30))
+        )
 
         today = now_et.date()
         available_dates = sorted(set(bars_1m.index.date))
@@ -951,6 +989,9 @@ def grade():
         else:
             target_date = available_dates[-1]
             is_replay = True
+
+        # Gap fill uses today during pre-market so projected gap shows live
+        gap_fill_date = today if (is_market_hours or is_pre_market) else target_date
 
         engulf_bear_watch = {}
         for sym, df_raw in bearish_5m.items():
@@ -1126,9 +1167,9 @@ def grade():
         # Gap Fill and VWAP Pullback signals
         gap_fill = {}
         for sym, df_raw in gap_fill_5m.items():
-            today_5m    = df_raw[df_raw.index.date == target_date].copy()
+            today_5m    = df_raw[df_raw.index.date == gap_fill_date].copy()
             daily_df    = gap_fill_1d.get(sym, pd.DataFrame())
-            prev_days   = daily_df[daily_df.index.date < target_date] if len(daily_df) > 0 else pd.DataFrame()
+            prev_days   = daily_df[daily_df.index.date < gap_fill_date] if len(daily_df) > 0 else pd.DataFrame()
             prior_close = float(prev_days.iloc[-1]["close"]) if len(prev_days) > 0 else None
             gap_fill[sym] = score_gap_fill(sym, today_5m, prior_close)
 
@@ -1140,6 +1181,7 @@ def grade():
             "success": True,
             "timestamp": now_et.strftime("%Y-%m-%d %H:%M:%S ET"),
             "is_market_hours": is_market_hours,
+            "is_pre_market": is_pre_market,
             "is_replay": is_replay,
             "replay_date": str(target_date) if is_replay else None,
             "bullish_watch": bullish_watch,

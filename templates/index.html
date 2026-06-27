@@ -516,6 +516,8 @@
     <div class="setup-section-title bearish setup-section-bearish">Bearish Setups</div>
     <div id="bearish-watch-cards"></div>
     <div id="engulf-bear-watch-cards"></div>
+    <div id="decay-section"></div>
+    <div id="disclaimer-section"></div>
   </div>
 
   <!-- Tab 2: Gap Fill + VWAP -->
@@ -526,8 +528,8 @@
     <div id="vwap-pullback-card"></div>
   </div>
 
-  <!-- Signal Decay Curve -->
-  <div style="margin-bottom:16px">
+  <!-- Signal Decay Curve (inside Setups tab via JS move below) -->
+  <div id="decay-static" style="margin-bottom:16px">
     <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #1f2028">
       Signal Decay — Historical Accuracy by Hold Time (365 days, full setup)
     </div>
@@ -651,7 +653,7 @@
     </div>
   </div>
 
-  <div class="disclaimer">
+  <div id="disclaimer-static" class="disclaimer">
     <strong>What this score means:</strong> Reflects how cleanly the most recent 5-minute bar matches all 4 setup conditions —
     engulfing candle, SMA10 cross, MACD curl, and double bottom/top. A full 100/100 during the prime window is the signal to watch.
     Always apply your own judgment and risk management.
@@ -659,6 +661,15 @@
 </main>
 
 <script>
+// Move signal decay and disclaimer into Tab 1 so they hide on Gap Fill tab
+document.addEventListener('DOMContentLoaded', () => {
+  const decay = document.getElementById('decay-static');
+  const disc  = document.getElementById('disclaimer-static');
+  const tab1  = document.getElementById('tab-setups');
+  if (decay && tab1) tab1.appendChild(decay);
+  if (disc  && tab1) tab1.appendChild(disc);
+});
+
 let countdown = 60;
 let countdownTimer = null;
 
@@ -1346,12 +1357,16 @@ function gapFillSteps(sym, d) {
     s1detail = 'No gap today (gap &lt;0.1%). Nothing to do.';
   } else if (d.status === 'small') {
     s1state  = 'fail';
-    s1label  = 'Gap check at open';
-    s1detail = `Gap is ${d.gap_pct.toFixed(2)}% — too small. Need 0.3–0.5%. Skip.`;
+    s1label  = d.pre_market ? `Pre-market gap: ${d.gap_pct.toFixed(2)}%` : 'Gap check at open';
+    s1detail = `Gap is ${d.gap_pct.toFixed(2)}% — too small. Need 0.3–0.5%.${d.pre_market ? ' Watching for expansion.' : ' Skip.'}`;
   } else if (d.status === 'large') {
     s1state  = 'fail';
-    s1label  = 'Gap check at open';
-    s1detail = `Gap is ${d.gap_pct.toFixed(2)}% — too large. Need 0.3–0.5%. Skip.`;
+    s1label  = d.pre_market ? `Pre-market gap: ${d.gap_pct.toFixed(2)}%` : 'Gap check at open';
+    s1detail = `Gap is ${d.gap_pct.toFixed(2)}% — too large. Need 0.3–0.5%.${d.pre_market ? ' May compress before open.' : ' Skip.'}`;
+  } else if (d.status === 'pre_market') {
+    s1state  = 'active';
+    s1label  = `Pre-market gap: ${d.gap_pct.toFixed(2)}% ${dirSpan}`;
+    s1detail = `${d.pre_market_time} bar · $${d.entry} vs prior close $${d.prior_close} · Target $${d.target} · <em style="color:#6b7280">Gap may shift before 9:30am open</em>`;
   } else {
     s1state  = 'done';
     s1label  = `Gap: ${d.gap_pct.toFixed(2)}% ${dirSpan}`;
@@ -1361,7 +1376,13 @@ function gapFillSteps(sym, d) {
   // Step 2: Opening drive filter (first 5-min bar)
   let s2state, s2label, s2detail;
   const noGap = ['no_gap','small','large'].includes(d.status);
-  if (noGap) {
+  if (d.status === 'pre_market') {
+    s2state  = 'pending';
+    s2label  = 'Opening drive filter (9:35 AM)';
+    s2detail = d.direction === 'short'
+      ? 'At 9:35am, first 5-min bar must close DOWN to confirm the fade.'
+      : 'At 9:35am, first 5-min bar must close UP to confirm the fade.';
+  } else if (noGap) {
     s2state  = 'pending';
     s2label  = 'Opening drive filter (9:35 AM)';
     s2detail = null;
@@ -1387,7 +1408,11 @@ function gapFillSteps(sym, d) {
 
   // Step 3: Enter the trade
   let s3state, s3label, s3detail;
-  if (noGap || d.status === 'watching' || d.status === 'skip') {
+  if (d.status === 'pre_market') {
+    s3state  = 'pending';
+    s3label  = 'Enter at 9:35 AM (if filter passes)';
+    s3detail = null;
+  } else if (noGap || d.status === 'watching' || d.status === 'skip') {
     s3state  = noGap || d.status === 'skip' ? 'fail' : 'pending';
     s3label  = 'Enter at 9:35 AM';
     s3detail = null;
@@ -1403,7 +1428,11 @@ function gapFillSteps(sym, d) {
 
   // Step 4: Manage / exit
   let s4state, s4label, s4detail;
-  if (['no_gap','small','large','skip','watching'].includes(d.status)) {
+  if (d.status === 'pre_market') {
+    s4state  = 'pending';
+    s4label  = 'Exit by 11:00 AM';
+    s4detail = null;
+  } else if (['no_gap','small','large','skip','watching'].includes(d.status)) {
     s4state  = 'pending';
     s4label  = 'Manage trade → exit by 11:00 AM';
     s4detail = null;
@@ -1455,7 +1484,7 @@ function renderGapFill(gapFillMap) {
   for (const [sym, d] of Object.entries(gapFillMap)) {
     const hasSignal = d.status === 'signal';
     const noTrade   = ['no_gap','small','large','skip'].includes(d.status);
-    const hasDir    = d.direction && !noTrade;
+    const hasDir    = d.direction && (!noTrade || d.pre_market);
     const isPuts    = d.direction === 'short';
     const dirBg     = isPuts ? '#2d0f0f' : '#052e16';
     const dirCol    = isPuts ? '#f87171' : '#4ade80';
