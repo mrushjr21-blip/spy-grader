@@ -1349,6 +1349,14 @@ function gapFillSteps(sym, d) {
   const dirColor = d.direction === 'short' ? '#f87171' : '#4ade80';
   const dirSpan  = d.direction ? `<span style="color:${dirColor};font-weight:700">${dirLabel}</span>` : '';
 
+  // After-close state — show tomorrow's prior close and trigger range
+  if (d.status === 'after_close') {
+    return stepRow('done',    `Market closed · Prior close: $${d.today_close}`, `This becomes tomorrow's gap fill target.`)
+         + stepRow('pending', 'Gap up trigger (Buy Puts)',  `Open $${d.gap_short_min} – $${d.gap_short_max} (+0.3–0.5%)`)
+         + stepRow('pending', 'Gap down trigger (Buy Calls)', `Open $${d.gap_long_min} – $${d.gap_long_max} (-0.3–0.5%)`)
+         + stepRow('pending', 'Check back at 8:00 AM', 'Pre-market gap projection will appear here.');
+  }
+
   // Step 1: Gap check at open
   let s1state, s1label, s1detail;
   if (!d.gap_pct || d.status === 'no_gap') {
