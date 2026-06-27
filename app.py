@@ -189,9 +189,16 @@ BACKTEST_STATS = {
 # Pattern: Morning Gap Fill (SPY / QQQ / IWM)
 # ---------------------------------------------------------------------------
 
+GAP_FILL_STATS = {
+    "SPY": {"wr_15m": 82, "wr_30m": 77, "n": 22},
+    "QQQ": {"wr_15m": 78, "wr_30m": 72, "n": 18},
+    "IWM": {"wr_15m": 78, "wr_30m": 70, "n": 27},
+}
+
+
 def score_gap_fill(ticker, df_5m_today, prior_close):
     """
-    Gap fill signal: 0.3–0.4% gap at open, fade with opening drive filter.
+    Gap fill signal: 0.3–0.5% gap at open, fade with opening drive filter.
     Status: no_gap | small | large | watching | skip | signal | expired
     """
     result = {
@@ -203,6 +210,7 @@ def score_gap_fill(ticker, df_5m_today, prior_close):
         "stop":        None,
         "target":      None,
         "prior_close": round(prior_close, 2) if prior_close else None,
+        "backtest_stats": GAP_FILL_STATS.get(ticker),
     }
 
     if prior_close is None or len(df_5m_today) < 1:
@@ -218,6 +226,10 @@ def score_gap_fill(ticker, df_5m_today, prior_close):
     result["direction"] = direction
     result["entry"]     = round(today_open, 2)
     result["target"]    = round(prior_close, 2)
+    if 0.003 <= gap_pct < 0.004:
+        result["bucket_note"] = "0.3-0.4% bucket — strongest at +15m (67% win rate)"
+    elif 0.004 <= gap_pct < 0.005:
+        result["bucket_note"] = "0.4-0.5% bucket — better at +30m (69% win rate)"
 
     if gap_pct < 0.001:
         result["status"] = "no_gap"

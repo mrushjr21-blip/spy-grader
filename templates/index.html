@@ -1423,6 +1423,28 @@ function gapFillSteps(sym, d) {
        + stepRow(s4state, s4label, s4detail);
 }
 
+function gapFillStats(sym, d) {
+  const bs = d.backtest_stats;
+  if (!bs) return '';
+  const bucketNote = d.bucket_note
+    ? `<div style="color:#818cf8;font-size:11px;margin-top:4px">${d.bucket_note}</div>`
+    : '';
+  return `
+    <div style="padding:8px 14px;border-top:1px solid #1a1a24;background:#0d0d16">
+      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#4b5563;margin-bottom:4px">Backtest — 365d · 0.3–0.5% range · drive filter</div>
+      <div style="font-size:12px;color:#9ca3af">
+        <span style="color:#6b7280">${sym}</span>
+        &nbsp;·&nbsp;
+        <span style="color:#4ade80;font-weight:700">+15m: ${bs.wr_15m}%</span>
+        &nbsp;·&nbsp;
+        <span style="color:#4ade80;font-weight:700">+30m: ${bs.wr_30m}%</span>
+        &nbsp;·&nbsp;
+        <span style="color:#6b7280">${bs.n} signals</span>
+      </div>
+      ${bucketNote}
+    </div>`;
+}
+
 function renderGapFill(gapFillMap) {
   const container = document.getElementById('gap-fill-cards');
   container.innerHTML = '';
@@ -1454,6 +1476,7 @@ function renderGapFill(gapFillMap) {
           ${priorCloseHtml}
         </div>
         ${gapFillSteps(sym, d)}
+        ${gapFillStats(sym, d)}
       </div>`;
   }
 }
