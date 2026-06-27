@@ -158,6 +158,7 @@ BULLISH_WATCH      = ["MU", "NVDA", "NFLX", "AMAT", "HOOD"]  # full setup bullis
 ENGULF_BULL_WATCH  = []                     # 2-condition bullish watch (empty)
 ENGULF_BEAR_WATCH  = []                     # 2-condition bearish watch (empty)
 GAP_FILL_TICKERS   = ["SPY", "QQQ", "IWM"] # morning gap fill + VWAP pullback
+PDL_SHORT_TICKERS  = ["MSFT", "GOOGL"]         # prior day low short setup
 
 # Hardcoded backtest stats for specific symbol/direction/hour combos (full setup, 365 days)
 # Keys: (symbol, direction, ET_hour)
@@ -194,6 +195,12 @@ GAP_FILL_STATS = {
     "QQQ": {"wr_15m": 78, "wr_30m": 72, "n": 18},
     "IWM": {"wr_15m": 78, "wr_30m": 70, "n": 27},
 }
+
+PDL_SHORT_STATS = {
+    "MSFT":  {"wr_30m": 80, "n": 20, "note": "Entry before 10am · exit +30m"},
+    "GOOGL": {"wr_30m": 85, "n": 13, "note": "Open >1% above PDL · exit +30m"},
+}
+GOOGL_MIN_DIST = 0.01  # GOOGL needs today's open 1%+ above prior day low
 
 
 def score_gap_fill(ticker, df_5m_today, prior_close, is_post_market=False):
@@ -312,6 +319,109 @@ def score_gap_fill(ticker, df_5m_today, prior_close, is_post_market=False):
         return result
 
     result["status"] = "signal"
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Pattern: Prior Day Low Short (MSFT 80% / GOOGL 85% at +30m)
+# ---------------------------------------------------------------------------
+
+def score_pdl_short(ticker, df_5m_today, prior_day_row, is_post_market=False):
+    """
+    PDL short: stock gapped up, opened above PDL, first close below PDL before 10am.
+    MSFT: 80% win at +30m (n=20). GOOGL: 85% win at +30m, needs open >1% above PDL (n=13).
+    Status: no_signal | pre_market | wrong_dir | already_below | dist_too_small |
+            watching | signal | expired | after_close
+    """
+    result = {
+        "ticker":         ticker,
+        "status":         "no_signal",
+        "pdl":            None,
+        "today_open":     None,
+        "dist_pct":       None,
+        "gap_pct":        None,
+        "entry":          None,
+        "stop":           None,
+        "signal_time":    None,
+        "backtest_stats": PDL_SHORT_STATS.get(ticker),
+    }
+
+    if prior_day_row is None or len(df_5m_today) < 1:
+        return result
+
+    pdl      = float(prior_day_row["low"])
+    pd_close = float(prior_day_row["close"])
+    result["pdl"] = round(pdl, 2)
+
+    # Post-market: show today's PDL as reference for tomorrow
+    if is_post_market:
+        today_close = float(df_5m_today.iloc[-1]["close"])
+        result.update({
+            "status":      "after_close",
+            "today_close": round(today_close, 2),
+        })
+        return result
+
+    # Pre-market: project direction and distance from PDL
+    last_bar  = df_5m_today.iloc[-1]
+    last_time = last_bar.name
+    if last_time.hour < 9 or (last_time.hour == 9 and last_time.minute < 30):
+        current_price = float(last_bar["close"])
+        gap_pct  = (current_price - pd_close) / pd_close
+        dist_pct = (current_price - pdl) / pdl
+        result.update({
+            "today_open":     round(current_price, 2),
+            "gap_pct":        round(gap_pct * 100, 3),
+            "dist_pct":       round(dist_pct * 100, 3),
+            "pre_market_time": last_time.strftime("%H:%M"),
+        })
+        if gap_pct <= 0:
+            result["status"] = "wrong_dir"
+        elif dist_pct < 0:
+            result["status"] = "already_below"
+        elif ticker == "GOOGL" and dist_pct < GOOGL_MIN_DIST:
+            result["status"] = "dist_too_small"
+        else:
+            result["status"] = "pre_market"
+        return result
+
+    # Market hours
+    bar0       = df_5m_today.iloc[0]
+    today_open = float(bar0["open"])
+    gap_pct    = (today_open - pd_close) / pd_close
+    dist_pct   = (today_open - pdl) / pdl
+
+    result["today_open"] = round(today_open, 2)
+    result["gap_pct"]    = round(gap_pct * 100, 3)
+    result["dist_pct"]   = round(dist_pct * 100, 3)
+
+    if gap_pct <= 0:
+        result["status"] = "wrong_dir"
+        return result
+
+    if today_open <= pdl:
+        result["status"] = "already_below"
+        return result
+
+    if ticker == "GOOGL" and dist_pct < GOOGL_MIN_DIST:
+        result["status"] = "dist_too_small"
+        return result
+
+    # Scan for first bar that closes below PDL before 10am
+    for _, bar in df_5m_today.iterrows():
+        if bar.name.hour >= 10:
+            break
+        if float(bar["close"]) < pdl:
+            result.update({
+                "status":      "signal",
+                "entry":       round(float(bar["close"]), 2),
+                "stop":        round(pdl, 2),
+                "signal_time": bar.name.strftime("%H:%M"),
+            })
+            return result
+
+    current_time = df_5m_today.iloc[-1].name
+    result["status"] = "watching" if current_time.hour < 10 else "expired"
     return result
 
 
@@ -452,7 +562,15 @@ def fetch_spy_data():
         sym: fetch_et(sym, TimeFrame(1, TimeFrameUnit.Day), now - timedelta(days=7))
         for sym in GAP_FILL_TICKERS
     }
-    return bars_1m, bearish_5m, bullish_5m, gap_fill_5m, gap_fill_1d
+    pdl_short_5m = {
+        sym: fetch_et(sym, TimeFrame(5, TimeFrameUnit.Minute), now - timedelta(days=3))
+        for sym in PDL_SHORT_TICKERS
+    }
+    pdl_short_1d = {
+        sym: fetch_et(sym, TimeFrame(1, TimeFrameUnit.Day), now - timedelta(days=7))
+        for sym in PDL_SHORT_TICKERS
+    }
+    return bars_1m, bearish_5m, bullish_5m, gap_fill_5m, gap_fill_1d, pdl_short_5m, pdl_short_1d
 
 
 def add_indicators_5m(df):
@@ -978,7 +1096,7 @@ def grade():
         })
 
     try:
-        bars_1m, bearish_5m, bullish_5m, gap_fill_5m, gap_fill_1d = fetch_spy_data()
+        bars_1m, bearish_5m, bullish_5m, gap_fill_5m, gap_fill_1d, pdl_short_5m, pdl_short_1d = fetch_spy_data()
 
         now_et = datetime.now(ET)
         mo = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
@@ -1187,6 +1305,14 @@ def grade():
             prior_close = float(prev_days.iloc[-1]["close"]) if len(prev_days) > 0 else None
             gap_fill[sym] = score_gap_fill(sym, today_5m, prior_close, is_post_market=is_post_market)
 
+        pdl_short = {}
+        for sym, df_raw in pdl_short_5m.items():
+            today_5m  = df_raw[df_raw.index.date == gap_fill_date].copy()
+            daily_df  = pdl_short_1d.get(sym, pd.DataFrame())
+            prev_days = daily_df[daily_df.index.date < gap_fill_date] if len(daily_df) > 0 else pd.DataFrame()
+            prior_day_row = prev_days.iloc[-1] if len(prev_days) > 0 else None
+            pdl_short[sym] = score_pdl_short(sym, today_5m, prior_day_row, is_post_market=is_post_market)
+
         spy_today = gap_fill_5m.get("SPY", pd.DataFrame())
         spy_today = spy_today[spy_today.index.date == target_date].copy() if len(spy_today) > 0 else pd.DataFrame()
         vwap_pullback = score_vwap_pullback(spy_today)
@@ -1202,6 +1328,7 @@ def grade():
             "bearish_watch": bearish_watch,
             "engulf_bear_watch": engulf_bear_watch,
             "gap_fill": gap_fill,
+            "pdl_short": pdl_short,
             "vwap_pullback": vwap_pullback,
         })
 

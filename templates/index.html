@@ -524,6 +524,8 @@
   <div id="tab-gap-vwap" class="tab-panel">
     <div class="setup-section-title" style="color:#818cf8;border-bottom:1px solid #1f2028;padding-bottom:6px;margin-bottom:12px">Morning Gap Fill</div>
     <div id="gap-fill-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:20px"></div>
+    <div class="setup-section-title" style="color:#f87171;border-bottom:1px solid #1f2028;padding-bottom:6px;margin-bottom:12px;margin-top:8px">PDL Short — MSFT + GOOGL (80–85% Win Rate at +30m)</div>
+    <div id="pdl-short-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:20px"></div>
     <div class="setup-section-title" style="color:#818cf8;border-bottom:1px solid #1f2028;padding-bottom:6px;margin-bottom:12px">VWAP First Pullback — Shorts Only (68% Win Rate)</div>
     <div id="vwap-pullback-card"></div>
   </div>
@@ -1343,6 +1345,147 @@ function stepRow(state, label, detail) {
     </div>`;
 }
 
+// ── PDL Short ─────────────────────────────────────────────────────────────────
+function pdlShortSteps(sym, d) {
+  const pdlStr  = d.pdl  ? `$${d.pdl}` : '—';
+  const distStr = d.dist_pct != null ? `${d.dist_pct.toFixed(2)}%` : '—';
+  const gapStr  = d.gap_pct  != null ? `+${d.gap_pct.toFixed(2)}%` : '—';
+
+  // After-close state
+  if (d.status === 'after_close') {
+    return stepRow('done',    `Market closed · Today's close: $${d.today_close}`, `Today's low ${pdlStr} becomes tomorrow's PDL trigger.`)
+         + stepRow('pending', 'Gap up at open (tomorrow)',      'Stock must open above prior close')
+         + stepRow('pending', 'Open 1%+ above PDL (GOOGL)',     sym === 'GOOGL' ? `Need open above $${(d.pdl * 1.01).toFixed(2)}` : 'Any gap up OK for MSFT')
+         + stepRow('pending', 'First close below PDL before 10am', `Watch for break of ${pdlStr}`);
+  }
+
+  // Step 1: Gap up check
+  let s1state, s1label, s1detail;
+  if (d.status === 'no_signal') {
+    s1state = 'pending'; s1label = 'Gap check at open'; s1detail = null;
+  } else if (d.status === 'wrong_dir') {
+    s1state  = 'fail';
+    s1label  = 'Gap check — no setup';
+    s1detail = `Stock did not gap up today (gap: ${gapStr}). Setup requires a gap up. No trade.`;
+  } else if (d.status === 'already_below') {
+    s1state  = 'fail';
+    s1label  = 'Gap check — opened below PDL';
+    s1detail = `Opened already below PDL ${pdlStr}. Need to open above it first. No trade.`;
+  } else if (d.status === 'pre_market') {
+    s1state  = 'active';
+    s1label  = `Pre-market: ${gapStr} gap up`;
+    s1detail = `${d.pre_market_time} bar · $${d.today_open} vs PDL ${pdlStr} · ${distStr} above PDL`;
+  } else {
+    s1state  = 'done';
+    s1label  = `Gapped up ${gapStr}`;
+    s1detail = `Opened $${d.today_open} · PDL is ${pdlStr} · ${distStr} above PDL`;
+  }
+
+  // Step 2: Distance filter (GOOGL only needs 1%)
+  let s2state, s2label, s2detail;
+  const needsDist = sym === 'GOOGL';
+  if (['no_signal','wrong_dir','already_below'].includes(d.status)) {
+    s2state  = 'pending';
+    s2label  = needsDist ? 'Distance filter (open >1% above PDL)' : 'Distance check';
+    s2detail = null;
+  } else if (d.status === 'dist_too_small') {
+    s2state  = 'fail';
+    s2label  = `Distance too small — ${distStr} above PDL`;
+    s2detail = `GOOGL needs open >1% above PDL for edge. Only ${distStr}. No trade today.`;
+  } else if (d.status === 'pre_market') {
+    const ok = !needsDist || (d.dist_pct >= 1.0);
+    s2state  = ok ? 'done' : 'active';
+    s2label  = needsDist ? (ok ? `Distance OK: ${distStr} above PDL` : `Distance: ${distStr} — need >1%`) : `${distStr} above PDL`;
+    s2detail = null;
+  } else {
+    s2state  = 'done';
+    s2label  = needsDist ? `Distance OK: ${distStr} above PDL` : `${distStr} above PDL`;
+    s2detail = null;
+  }
+
+  // Step 3: Wait for break below PDL before 10am
+  let s3state, s3label, s3detail;
+  if (['no_signal','wrong_dir','already_below','dist_too_small'].includes(d.status)) {
+    s3state  = 'pending'; s3label = `Watch for close below PDL ${pdlStr} (before 10am)`; s3detail = null;
+  } else if (d.status === 'pre_market') {
+    s3state  = 'pending'; s3label = `Watch for close below PDL ${pdlStr} (before 10am)`; s3detail = 'Waiting for 9:30am open';
+  } else if (d.status === 'watching') {
+    s3state  = 'active';
+    s3label  = `Watching for close below PDL ${pdlStr}`;
+    s3detail = `Current price $${d.today_open} · PDL at ${pdlStr} · window closes at 10:00am`;
+  } else if (d.status === 'expired') {
+    s3state  = 'fail';
+    s3label  = 'Expired — no break below PDL by 10am';
+    s3detail = `No close below ${pdlStr} occurred before 10am. No trade.`;
+  } else if (d.status === 'signal') {
+    s3state  = 'done';
+    s3label  = `Break below PDL at ${d.signal_time} — entry $${d.entry}`;
+    s3detail = `First close below ${pdlStr} at ${d.signal_time}. Stop: PDL reclaim (close back above ${d.stop}).`;
+  } else {
+    s3state  = 'pending'; s3label = `Watch for close below PDL ${pdlStr}`; s3detail = null;
+  }
+
+  // Step 4: Exit at +30m
+  let s4state, s4label, s4detail;
+  if (d.status === 'signal') {
+    s4state  = 'active';
+    s4label  = 'Exit at +30m from entry';
+    s4detail = `<span style="color:#f87171;font-weight:600">Buy puts at entry $${d.entry} · exit 30 minutes later</span> · Stop: price reclaims PDL ${pdlStr}`;
+  } else {
+    s4state  = 'pending';
+    s4label  = 'Exit at +30m from entry';
+    s4detail = null;
+  }
+
+  return stepRow(s1state, s1label, s1detail)
+       + stepRow(s2state, s2label, s2detail)
+       + stepRow(s3state, s3label, s3detail)
+       + stepRow(s4state, s4label, s4detail);
+}
+
+function renderPdlShort(pdlMap) {
+  const container = document.getElementById('pdl-short-cards');
+  container.innerHTML = '';
+  if (Object.keys(pdlMap).length === 0) {
+    container.innerHTML = '<div style="color:#4b5563;font-size:12px;padding:8px 0">No data</div>';
+    return;
+  }
+  for (const [sym, d] of Object.entries(pdlMap)) {
+    const hasSignal  = d.status === 'signal';
+    const borderCol  = hasSignal ? '#7f1d1d' : '#1f2028';
+    const shadowStr  = hasSignal ? ';box-shadow:0 0 0 1px #7f1d1d' : '';
+    const bs         = d.backtest_stats;
+    const statsHtml  = bs ? `
+      <div style="padding:8px 14px;border-top:1px solid #1a1a24;background:#0d0d16">
+        <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#4b5563;margin-bottom:4px">Backtest — 365d · PDL break before 10am · gap up required</div>
+        <div style="font-size:12px;color:#9ca3af">
+          <span style="color:#6b7280">${sym}</span>
+          &nbsp;·&nbsp;
+          <span style="color:#4ade80;font-weight:700">+30m: ${bs.wr_30m}%</span>
+          &nbsp;·&nbsp;
+          <span style="color:#6b7280">${bs.n} signals</span>
+          &nbsp;·&nbsp;
+          <span style="color:#6b7280;font-size:11px">${bs.note}</span>
+        </div>
+      </div>` : '';
+    const pdlHtml = d.pdl
+      ? `<span style="font-size:11px;color:#6b7280">Prior day low <strong style="color:#9ca3af;font-size:12px">$${d.pdl}</strong></span>`
+      : '';
+    container.innerHTML += `
+      <div style="background:#111118;border:1px solid ${borderCol};border-radius:10px;overflow:hidden${shadowStr}">
+        <div style="padding:10px 14px;border-bottom:1px solid #1a1a24">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${pdlHtml ? '5px' : '0'}">
+            <span style="font-size:14px;font-weight:700;color:#f9fafb">${sym} <span style="font-size:10px;font-weight:400;color:#4b5563">PDL Short</span></span>
+            ${hasSignal ? '<span style="font-size:12px;font-weight:800;padding:4px 12px;border-radius:20px;background:#2d0f0f;color:#f87171;border:1px solid #7f1d1d;letter-spacing:0.06em">▼ BUY PUTS</span>' : '<span style="font-size:10px;color:#4b5563">—</span>'}
+          </div>
+          ${pdlHtml}
+        </div>
+        ${pdlShortSteps(sym, d)}
+        ${statsHtml}
+      </div>`;
+  }
+}
+
 // ── Gap Fill ─────────────────────────────────────────────────────────────────
 function gapFillSteps(sym, d) {
   const dirLabel = d.direction === 'short' ? '▼ Short' : '▲ Long';
@@ -1668,6 +1811,7 @@ async function loadData() {
     renderBearishWatch(data.bearish_watch || {});
     renderEngulfWatch(data.engulf_bear_watch || {}, 'engulf-bear-watch-cards', false);
     renderGapFill(data.gap_fill || {});
+    renderPdlShort(data.pdl_short || {});
     renderVwapPullback(data.vwap_pullback || null);
 
     // Discord alerts — only during live market hours, not replay
