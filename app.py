@@ -989,6 +989,7 @@ def grade():
             now_et.hour >= 8 and
             (now_et.hour < 9 or (now_et.hour == 9 and now_et.minute < 30))
         )
+        is_post_market = now_et.weekday() < 5 and now_et.hour >= 16
 
         today = now_et.date()
         available_dates = sorted(set(bars_1m.index.date))
