@@ -541,7 +541,7 @@
       <strong>Setup:</strong> Daily chart identifies where a gap-up zone and pivot low overlap (within 0.75%).
       On your 5-min chart watch for the first candle whose low touches the zone top — enter long on the NEXT bar open.
       <strong>$2.25 TP · $1.75 stop · cutoff 3:00 PM · EOD exit if neither hit.</strong>
-      Backtest (2y · 5-min): SPY <strong>68.6% WR · PF 2.81</strong> (35 trades) · QQQ <strong>59.6% WR · PF 1.90</strong> (57 trades). Break-even: 43.8%.
+      Backtest (2y · 5-min · zone within 1.5% of open): SPY <strong>65.7% WR · PF 2.46</strong> (35 trades) · QQQ <strong>61.5% WR · PF 2.06</strong> (52 trades). Break-even: 43.8%.
     </div>
   </div>
 
@@ -1331,8 +1331,8 @@ function renderEngulfWatch(watchMap, containerId, isBull) {
 
 // ── Gap+Pivot Live ────────────────────────────────────────────────────────────
 const GP_BT = {
-  SPY: { noFilter: { wr: '68.6%', pf: '2.81', n: 35 }, sma50: { wr: '85.7%', pf: '7.71', n: 7  } },
-  QQQ: { noFilter: { wr: '59.6%', pf: '1.90', n: 57 }, sma50: { wr: '75.0%', pf: '3.86', n: 12 } },
+  SPY: { noFilter: { wr: '65.7%', pf: '2.46', n: 35 }, sma50: { wr: '85.7%', pf: '7.71', n: 7  } },
+  QQQ: { noFilter: { wr: '61.5%', pf: '2.06', n: 52 }, sma50: { wr: '81.8%', pf: '5.79', n: 11 } },
 };
 
 function gapPivotSteps(sym, d) {
@@ -1513,8 +1513,8 @@ function renderGapPivot(gpMap) {
   }
 
   const backtest = {
-    SPY: { wr: '68.6%', pf: '2.81', trades: 35 },
-    QQQ: { wr: '59.6%', pf: '1.90', trades: 57 },
+    SPY: { wr: '65.7%', pf: '2.46', trades: 35 },
+    QQQ: { wr: '61.5%', pf: '2.06', trades: 52 },
   };
 
   for (const [sym, d] of Object.entries(gpMap)) {
