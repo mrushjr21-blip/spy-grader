@@ -483,7 +483,10 @@ def score_gap_fill(ticker, df_5m_today, prior_close, is_post_market=False):
         })
         return result
 
-    # Market hours logic
+    # Market hours logic — filter to RTH only so iloc[0] is always the 9:30 bar
+    df_5m_today = df_5m_today.between_time("09:30", "15:55")
+    if len(df_5m_today) == 0:
+        return result
     bar0       = df_5m_today.iloc[0]
     today_open = float(bar0["open"])
     gap        = today_open - prior_close
