@@ -347,8 +347,10 @@ def score_gap_pivot_live(ticker: str, df_5m_today: pd.DataFrame,
     result["day_open"] = round(day_open, 2)
     result["price"]    = round(cur_close, 2)
 
-    # Which zone is today's open above (within 0.5% tolerance)?
-    candidates = [z for z in zones if z["zone_top"] <= day_open * 1.005]
+    # Zone must be within 1.5% below open — optimal per threshold backtest
+    candidates = [z for z in zones
+                  if z["zone_top"] <= day_open * 1.005
+                  and z["zone_top"] >= day_open * 0.985]
     if not candidates:
         result["status"] = "no_zone_nearby"
         return result
