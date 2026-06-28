@@ -507,6 +507,7 @@
   <div class="tab-bar">
     <button class="tab-btn active" onclick="switchTab('setups', this)">Setups</button>
     <button class="tab-btn" onclick="switchTab('gap-vwap', this)">Gap Fill + VWAP</button>
+    <button class="tab-btn" onclick="switchTab('gap-pivot', this)">Gap+Pivot Zones</button>
   </div>
 
   <!-- Tab 1: Existing setups -->
@@ -528,6 +529,20 @@
     <div id="pdl-short-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:20px"></div>
     <div class="setup-section-title" style="color:#818cf8;border-bottom:1px solid #1f2028;padding-bottom:6px;margin-bottom:12px">VWAP First Pullback — Shorts Only (68% Win Rate)</div>
     <div id="vwap-pullback-card"></div>
+  </div>
+
+  <!-- Tab 3: Gap+Pivot Zones (live step tracking) -->
+  <div id="tab-gap-pivot" class="tab-panel">
+    <div class="setup-section-title" style="color:#818cf8;border-bottom:1px solid #1f2028;padding-bottom:6px;margin-bottom:16px">
+      Gap+Pivot Confluence — Daily Zones, 5-min Intraday Entry
+    </div>
+    <div id="gap-pivot-live-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-bottom:20px"></div>
+    <div class="disclaimer" style="margin-top:8px">
+      <strong>Setup:</strong> Daily chart identifies where a gap-up zone and pivot low overlap (within 0.75%).
+      On your 5-min chart watch for the first candle whose low touches the zone top — enter long on the NEXT bar open.
+      <strong>$2.25 TP · $1.75 stop · cutoff 3:00 PM · EOD exit if neither hit.</strong>
+      Backtest (2y · 5-min): SPY <strong>68.6% WR · PF 2.81</strong> (35 trades) · QQQ <strong>59.6% WR · PF 1.90</strong> (57 trades). Break-even: 43.8%.
+    </div>
   </div>
 
   <!-- Signal Decay Curve (inside Setups tab via JS move below) -->
@@ -1314,6 +1329,267 @@ function renderEngulfWatch(watchMap, containerId, isBull) {
   }
 }
 
+// ── Gap+Pivot Live ────────────────────────────────────────────────────────────
+const GP_BT = {
+  SPY: { noFilter: { wr: '68.6%', pf: '2.81', n: 35 }, sma50: { wr: '85.7%', pf: '7.71', n: 7  } },
+  QQQ: { noFilter: { wr: '59.6%', pf: '1.90', n: 57 }, sma50: { wr: '75.0%', pf: '3.86', n: 12 } },
+};
+
+function gapPivotSteps(sym, d) {
+  const zones      = d.zones || [];
+  const aboveSma   = d.above_sma50;
+  const bt         = GP_BT[sym] || GP_BT.SPY;
+  const btStats    = aboveSma ? bt.sma50 : bt.noFilter;
+  const btLabel    = aboveSma ? 'SMA50 filter' : 'No filter';
+
+  // ── Step 1: Zones identified + SMA50 ──────────────────────────────────────
+  let s1state, s1label, s1detail;
+  if (zones.length === 0) {
+    s1state  = 'fail';
+    s1label  = 'No confluence zones today';
+    s1detail = 'No gap-up zone overlaps with a pivot low within 0.75% today. No trade.';
+  } else {
+    const smaText   = aboveSma == null ? '' : aboveSma
+      ? ' · <span style="color:#4ade80;font-weight:600">Above SMA50 — filter met (higher WR)</span>'
+      : ' · <span style="color:#f87171">Below SMA50 — filter not met</span>';
+    const zoneList  = zones.slice(0, 3).map(z =>
+      `$${z.zone_top}${d.price && d.price > z.zone_top ? ` <span style="color:#4ade80;font-size:10px">(+$${(d.price - z.zone_top).toFixed(2)})</span>` : ''}`
+    ).join(' · ');
+    s1state  = 'done';
+    s1label  = `${zones.length} zone${zones.length > 1 ? 's' : ''} found${smaText}`;
+    s1detail = `Zone tops: <strong style="color:#f9fafb">${zoneList}</strong>${zones.length > 3 ? ` + ${zones.length - 3} more` : ''}<br>
+      Backtest (${btLabel}): <strong style="color:${aboveSma ? '#4ade80' : '#9ca3af'}">${btStats.wr} WR · PF ${btStats.pf}</strong> · ${btStats.n} trades · break-even 43.8%`;
+  }
+
+  // ── Step 2: Price opens near zone ─────────────────────────────────────────
+  let s2state, s2label, s2detail;
+  if (zones.length === 0) {
+    s2state = 'pending'; s2label = 'Price opens near a zone'; s2detail = null;
+  } else if (d.status === 'pre_market') {
+    const nearest = zones[0];
+    s2state  = 'active';
+    s2label  = 'Waiting for 9:30 AM open';
+    s2detail = `Watch whether SPY opens at or above the nearest zone top <strong style="color:#f9fafb">$${nearest.zone_top}</strong>.<br>
+      Open must be within 0.5% above the zone top to qualify.`;
+  } else if (d.status === 'no_zone_nearby') {
+    s2state  = 'fail';
+    s2label  = `Opened too far from any zone (open $${d.day_open})`;
+    s2detail = `Today's open $${d.day_open} is more than 0.5% above all zones. Price has moved away — no setup today.`;
+  } else {
+    const z = d.active_zone;
+    s2state  = 'done';
+    s2label  = `Opened near zone $${z ? z.zone_top : '—'} (open $${d.day_open})`;
+    s2detail = z ? `Zone top $${z.zone_top} · zone bottom $${z.zone_bottom} · open was $${d.day_open}` : null;
+  }
+
+  // ── Step 3: Watch for zone touch (first 5-min low ≤ zone_top × 1.002) ────
+  let s3state, s3label, s3detail;
+  const z = d.active_zone;
+  if (['no_zones','pre_market','no_zone_nearby'].includes(d.status)) {
+    s3state  = 'pending';
+    s3label  = 'Watch for 5-min touch of zone top';
+    s3detail = null;
+  } else if (d.status === 'watching_touch') {
+    s3state  = 'active';
+    s3label  = `Watching for 5-min low ≤ $${z ? z.zone_top : '—'}`;
+    s3detail = `First 5-min bar whose low touches <strong style="color:#f9fafb">$${z ? z.zone_top : '—'}</strong> (within 0.2%) triggers the entry.<br>
+      No new entries after <strong>3:00 PM</strong>. Cutoff is a hard stop.`;
+  } else if (d.status === 'expired') {
+    s3state  = 'fail';
+    s3label  = 'Expired — no touch before 3:00 PM';
+    s3detail = `Price never touched zone $${z ? z.zone_top : '—'} on a 5-min candle before 3 PM. No trade today.`;
+  } else {
+    s3state  = 'done';
+    s3label  = `Zone touched at ${d.touch_time}`;
+    s3detail = `First 5-min low hit $${z ? z.zone_top : '—'} at ${d.touch_time}. Entry on next bar open.`;
+  }
+
+  // ── Step 4: Enter + manage ────────────────────────────────────────────────
+  let s4state, s4label, s4detail;
+  if (['no_zones','pre_market','no_zone_nearby','watching_touch','expired'].includes(d.status)) {
+    s4state  = 'pending';
+    s4label  = 'Enter long · $2.25 TP · $1.75 stop';
+    s4detail = null;
+  } else if (d.status === 'signal') {
+    s4state  = 'active';
+    s4label  = 'Touch complete — entry on next 5-min open';
+    s4detail = `Zone touched at ${d.touch_time}. <strong style="color:#4ade80">Enter long at the OPEN of the next 5-min bar</strong>.<br>
+      Set target <strong>+$2.25</strong> and stop <strong>−$1.75</strong> from entry. EOD exit if neither hits by 4 PM.`;
+  } else if (d.status === 'in_trade') {
+    const pnlColor = d.pnl >= 0 ? '#4ade80' : '#f87171';
+    s4state  = 'active';
+    s4label  = `In trade · Entry $${d.entry} · TP $${d.tp} · Stop $${d.sl}`;
+    s4detail = `Entry at ${d.entry_time} · Current $${d.price} · <span style="color:${pnlColor};font-weight:700">P&L ${d.pnl >= 0 ? '+' : ''}$${d.pnl}</span><br>
+      Target <strong style="color:#4ade80">$${d.tp}</strong> · Stop <strong style="color:#f87171">$${d.sl}</strong> · EOD exit at 4 PM close if neither hit.`;
+  } else if (d.status === 'win') {
+    s4state  = 'done';
+    s4label  = `WIN · +$${d.pnl} · Entry $${d.entry} → TP $${d.tp}`;
+    s4detail = `Entered ${d.entry_time} · Target hit · P&L <strong style="color:#4ade80">+$${d.pnl}</strong>`;
+  } else if (d.status === 'loss') {
+    s4state  = 'fail';
+    s4label  = `LOSS · −$${Math.abs(d.pnl)} · Entry $${d.entry} → stopped $${d.sl}`;
+    s4detail = `Entered ${d.entry_time} · Stop hit · P&L <strong style="color:#f87171">$${d.pnl}</strong>`;
+  } else if (d.status === 'eod_exit') {
+    const pnlColor = d.pnl >= 0 ? '#4ade80' : '#f87171';
+    const pnlSign  = d.pnl >= 0 ? '+' : '';
+    s4state  = 'done';
+    s4label  = `EOD exit · ${pnlSign}$${d.pnl} · closed at 4 PM ($${d.exit_price})`;
+    s4detail = `Entered ${d.entry_time} · Neither TP nor stop hit · exited at close $${d.exit_price} · P&L <strong style="color:${pnlColor}">${pnlSign}$${d.pnl}</strong>`;
+  } else {
+    s4state = 'pending'; s4label = 'Enter long · $2.25 TP · $1.75 stop'; s4detail = null;
+  }
+
+  return stepRow(s1state, s1label, s1detail)
+       + stepRow(s2state, s2label, s2detail)
+       + stepRow(s3state, s3label, s3detail)
+       + stepRow(s4state, s4label, s4detail);
+}
+
+function renderGapPivotLive(gpLiveMap) {
+  const container = document.getElementById('gap-pivot-live-cards');
+  container.innerHTML = '';
+  if (!gpLiveMap || Object.keys(gpLiveMap).length === 0) {
+    container.innerHTML = '<div style="color:#4b5563;font-size:12px">No data</div>';
+    return;
+  }
+  for (const [sym, d] of Object.entries(gpLiveMap)) {
+    const isActive  = ['watching_touch','signal','in_trade'].includes(d.status);
+    const isWin     = d.status === 'win';
+    const isLoss    = d.status === 'loss';
+    const hasSignal = isActive || isWin || isLoss || d.status === 'eod_exit';
+    const aboveSma  = d.above_sma50;
+
+    const borderCol = isWin  ? '#166534' :
+                      isLoss ? '#7f1d1d' :
+                      isActive ? '#6b21a8' : '#1f2028';
+    const shadowStr = hasSignal ? `;box-shadow:0 0 0 1px ${borderCol}` : '';
+
+    const smaBg     = aboveSma === true  ? '#052e16' :
+                      aboveSma === false ? '#2d0f0f' : '#1c1c1c';
+    const smaColor  = aboveSma === true  ? '#4ade80' :
+                      aboveSma === false ? '#f87171' : '#6b7280';
+    const smaBorder = aboveSma === true  ? '#166534' :
+                      aboveSma === false ? '#7f1d1d' : '#374151';
+    const smaText   = aboveSma === true  ? 'Above SMA50' :
+                      aboveSma === false ? 'Below SMA50' : '—';
+
+    const bt        = (GP_BT[sym] || GP_BT.SPY);
+    const btStats   = aboveSma ? bt.sma50 : bt.noFilter;
+    const btLabel   = aboveSma ? 'SMA50 filter' : 'No filter';
+    const wrColor   = parseFloat(btStats.wr) >= 70 ? '#4ade80' : parseFloat(btStats.wr) >= 60 ? '#facc15' : '#9ca3af';
+
+    const actionBadge = isWin  ? `<span style="font-size:12px;font-weight:800;padding:4px 12px;border-radius:20px;background:#052e16;color:#4ade80;border:1px solid #166534">WIN +$${d.pnl}</span>` :
+                        isLoss ? `<span style="font-size:12px;font-weight:800;padding:4px 12px;border-radius:20px;background:#2d0f0f;color:#f87171;border:1px solid #7f1d1d">LOSS $${d.pnl}</span>` :
+                        d.status === 'in_trade' ? `<span style="font-size:12px;font-weight:800;padding:4px 12px;border-radius:20px;background:#1a1020;color:#c084fc;border:1px solid #6b21a8">▲ IN TRADE $${d.entry}</span>` :
+                        d.status === 'signal' ? `<span style="font-size:12px;font-weight:800;padding:4px 12px;border-radius:20px;background:#052e16;color:#4ade80;border:1px solid #166534">▲ ENTER NOW</span>` : '';
+
+    container.innerHTML += `
+      <div style="background:#111118;border:1px solid ${borderCol};border-radius:10px;overflow:hidden${shadowStr}">
+        <div style="padding:10px 14px;border-bottom:1px solid #1a1a24">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+            <span style="font-size:14px;font-weight:700;color:#f9fafb">${sym}
+              ${d.price ? `<span style="font-size:12px;color:#6b7280;font-weight:400;margin-left:6px">$${d.price}</span>` : ''}
+              <span style="font-size:10px;font-weight:400;color:#4b5563;margin-left:4px">Gap+Pivot</span>
+            </span>
+            ${actionBadge || '<span></span>'}
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:${smaBg};color:${smaColor};border:1px solid ${smaBorder}">${smaText}</span>
+            <span style="font-size:11px;color:#4b5563">Backtest (${btLabel}): <strong style="color:${wrColor}">${btStats.wr} WR</strong> · PF ${btStats.pf} · ${btStats.n} trades</span>
+          </div>
+        </div>
+        ${gapPivotSteps(sym, d)}
+      </div>`;
+  }
+}
+
+// ── Gap+Pivot Zones ───────────────────────────────────────────────────────────
+function renderGapPivot(gpMap) {
+  const container = document.getElementById('gap-pivot-cards');
+  container.innerHTML = '';
+  if (!gpMap || Object.keys(gpMap).length === 0) {
+    container.innerHTML = '<div style="color:#4b5563;font-size:12px">No data</div>';
+    return;
+  }
+
+  const backtest = {
+    SPY: { wr: '68.6%', pf: '2.81', trades: 35 },
+    QQQ: { wr: '59.6%', pf: '1.90', trades: 57 },
+  };
+
+  for (const [sym, d] of Object.entries(gpMap)) {
+    if (d.error) {
+      container.innerHTML += `
+        <div style="background:#111118;border:1px solid #1f2028;border-radius:10px;padding:16px;color:#6b7280;font-size:12px">
+          ${sym} — error: ${d.error}
+        </div>`;
+      continue;
+    }
+
+    const aboveSma  = d.above_sma50;
+    const smaBg     = aboveSma ? '#052e16' : '#2d0f0f';
+    const smaColor  = aboveSma ? '#4ade80' : '#f87171';
+    const smaBorder = aboveSma ? '#166534' : '#7f1d1d';
+    const smaLabel  = aboveSma ? 'Above SMA50 — filter met' : 'Below SMA50 — filter not met';
+    const bt        = backtest[sym] || {};
+
+    const zoneRows = d.zones.length
+      ? d.zones.map((z, i) => {
+          const dist    = d.price ? Math.abs(d.price - z.zone_top).toFixed(2) : '—';
+          const nearest = i === 0;
+          const rowBg   = nearest ? 'background:#13131e;' : '';
+          const topColor = nearest ? '#f9fafb' : '#9ca3af';
+          return `
+            <tr style="border-bottom:1px solid #141420;${rowBg}">
+              <td style="padding:8px 12px;font-weight:${nearest?'700':'400'};color:${topColor};font-variant-numeric:tabular-nums">
+                $${z.zone_top}
+                ${nearest ? '<span style="font-size:10px;color:#818cf8;margin-left:6px">nearest</span>' : ''}
+              </td>
+              <td style="padding:8px 12px;color:#6b7280;font-size:12px;font-variant-numeric:tabular-nums">$${z.zone_bottom}</td>
+              <td style="padding:8px 12px;text-align:right;font-size:12px;color:${d.price && d.price > z.zone_top ? '#4ade80' : '#f87171'};font-variant-numeric:tabular-nums">
+                ${d.price ? (d.price > z.zone_top ? '+' : '') + '$' + dist + ' away' : '—'}
+              </td>
+            </tr>`;
+        }).join('')
+      : `<tr><td colspan="3" style="padding:14px 12px;color:#4b5563;font-size:12px;text-align:center">No active confluence zones today</td></tr>`;
+
+    container.innerHTML += `
+      <div style="background:#111118;border:1px solid #1f2028;border-radius:10px;overflow:hidden">
+        <div style="padding:12px 16px;border-bottom:1px solid #1a1a24;display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <span style="font-size:16px;font-weight:700;color:#f9fafb">${sym}</span>
+            ${d.price ? `<span style="font-size:13px;color:#6b7280;margin-left:8px">$${d.price}</span>` : ''}
+          </div>
+          <span style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:${smaBg};color:${smaColor};border:1px solid ${smaBorder}">${smaLabel}</span>
+        </div>
+        ${d.price && d.sma50 ? `
+        <div style="padding:8px 16px;border-bottom:1px solid #1a1a24;display:flex;gap:20px;font-size:12px">
+          <span style="color:#4b5563">Price <strong style="color:#9ca3af">$${d.price}</strong></span>
+          <span style="color:#4b5563">SMA50 <strong style="color:#9ca3af">$${d.sma50}</strong></span>
+          <span style="color:#4b5563">Gap <strong style="color:${smaColor}">${d.above_sma50 ? '+' : ''}$${(d.price - d.sma50).toFixed(2)}</strong></span>
+        </div>` : ''}
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="background:#0f0f18;border-bottom:1px solid #1f2028">
+              <th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#4b5563">Zone Top</th>
+              <th style="padding:6px 12px;text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#4b5563">Zone Bottom</th>
+              <th style="padding:6px 12px;text-align:right;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#4b5563">Distance</th>
+            </tr>
+          </thead>
+          <tbody>${zoneRows}</tbody>
+        </table>
+        ${bt.wr ? `
+        <div style="padding:8px 12px 10px;border-top:1px solid #1a1a24;background:#0d0d16;font-size:11px;color:#4b5563">
+          Backtest (2y · 5-min · No Filter):
+          <span style="color:#4ade80;font-weight:700">${bt.wr} WR</span> ·
+          <span style="color:#9ca3af">PF ${bt.pf}</span> ·
+          <span style="color:#6b7280">${bt.trades} trades</span> ·
+          Break-even: <span style="color:#9ca3af">43.8%</span>
+        </div>` : ''}
+      </div>`;
+  }
+}
+
 // ── Tab switching ────────────────────────────────────────────────────────────
 function switchTab(name, btn) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
@@ -1813,6 +2089,8 @@ async function loadData() {
     renderGapFill(data.gap_fill || {});
     renderPdlShort(data.pdl_short || {});
     renderVwapPullback(data.vwap_pullback || null);
+    renderGapPivot(data.gap_pivot || {});
+    renderGapPivotLive(data.gap_pivot_live || {});
 
     // Discord alerts — only during live market hours, not replay
     if (!data.is_replay && data.is_market_hours) {

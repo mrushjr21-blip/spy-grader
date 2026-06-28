@@ -202,6 +202,219 @@ PDL_SHORT_STATS = {
 }
 GOOGL_MIN_DIST = 0.01  # GOOGL needs today's open 1%+ above prior day low
 
+# ---------------------------------------------------------------------------
+# Gap + Pivot Zone Detection (daily cache — zones don't change intraday)
+# ---------------------------------------------------------------------------
+
+_GP_CACHE: dict = {}   # (ticker, date) -> result dict
+
+def compute_gap_pivot_zones(ticker: str) -> dict:
+    """Return today's active gap+pivot confluence zones for ticker."""
+    PIVOT_N    = 5
+    CONFLUENCE = 0.75
+    MIN_GAP    = 0.10
+    WARMUP     = 210
+
+    today     = datetime.now(ET).date()
+    cache_key = (ticker, today)
+    if cache_key in _GP_CACHE:
+        return _GP_CACHE[cache_key]
+
+    blank = dict(ticker=ticker, price=None, sma50=None, above_sma50=None, zones=[], error=None)
+    if not API_KEY or not API_SECRET:
+        return blank
+
+    try:
+        client = StockHistoricalDataClient(API_KEY, API_SECRET)
+        req    = StockBarsRequest(
+            symbol_or_symbols=ticker,
+            timeframe=TimeFrame(1, TimeFrameUnit.Day),
+            start=datetime.now(ET) - timedelta(days=3 * 365 + 30),
+            end=datetime.now(ET),
+            feed="iex",
+        )
+        daily = _normalize_single(client.get_stock_bars(req).df, ticker)
+        daily = daily[["open", "high", "low", "close"]].dropna().copy()
+    except Exception as exc:
+        blank["error"] = str(exc)
+        return blank
+
+    daily["sma50"] = daily["close"].rolling(50).mean()
+
+    gaps = []
+    for i in range(1, len(daily)):
+        ph = float(daily["high"].iloc[i - 1])
+        o  = float(daily["open"].iloc[i])
+        if o > ph and (o - ph) / ph * 100 >= MIN_GAP:
+            gaps.append(dict(idx=i, bottom=ph, top=o, mid=(ph + o) / 2))
+
+    piv_lows = []
+    for i in range(PIVOT_N, len(daily) - PIVOT_N):
+        w = slice(i - PIVOT_N, i + PIVOT_N + 1)
+        if float(daily["low"].iloc[i]) == float(daily["low"].iloc[w].min()):
+            piv_lows.append(dict(idx=i, price=float(daily["low"].iloc[i])))
+
+    if len(daily) < WARMUP:
+        _GP_CACHE[cache_key] = blank
+        return blank
+
+    last    = len(daily) - 1
+    close   = float(daily["close"].iloc[last])
+    sma50   = float(daily["sma50"].iloc[last])
+
+    sup_gaps  = [g for g in gaps  if g["idx"] < last and g["top"] <= close * 1.01]
+    past_pivs = [p for p in piv_lows if p["idx"] < last - PIVOT_N]
+
+    zones = []
+    for gap in reversed(sup_gaps[-20:]):
+        for piv in reversed(past_pivs[-30:]):
+            if abs(piv["price"] - gap["mid"]) / gap["mid"] * 100 <= CONFLUENCE:
+                zones.append(dict(
+                    zone_top=round(gap["top"], 2),
+                    zone_bottom=round(min(gap["bottom"], piv["price"]), 2),
+                    dist_pct=round((close - gap["top"]) / close * 100, 2),
+                ))
+                break
+
+    result = dict(
+        ticker=ticker,
+        price=round(close, 2),
+        sma50=round(sma50, 2),
+        above_sma50=bool(close > sma50),
+        zones=zones[:6],
+        error=None,
+    )
+    _GP_CACHE[cache_key] = result
+    return result
+
+
+def score_gap_pivot_live(ticker: str, df_5m_today: pd.DataFrame,
+                          gp_data: dict, is_post_market: bool = False) -> dict:
+    """
+    Live intraday step-tracking for gap+pivot setup.
+    Statuses: no_zones | pre_market | no_zone_nearby | watching_touch |
+              signal | in_trade | win | loss | eod_exit | expired | after_close
+    """
+    FIXED_TP   = 2.25
+    FIXED_STOP = 1.75
+    CUTOFF_T   = pd.Timestamp("15:00").time()
+
+    zones       = gp_data.get("zones", [])
+    above_sma50 = gp_data.get("above_sma50")
+
+    result = dict(
+        ticker      = ticker,
+        status      = "no_zones",
+        zones       = zones,
+        above_sma50 = above_sma50,
+        price       = gp_data.get("price"),
+        sma50       = gp_data.get("sma50"),
+        day_open    = None,
+        active_zone = None,
+        touch_time  = None,
+        entry       = None,
+        tp          = None,
+        sl          = None,
+        entry_time  = None,
+        exit_price  = None,
+        pnl         = None,
+    )
+
+    if not zones:
+        return result
+
+    has_bars   = df_5m_today is not None and len(df_5m_today) > 0
+    last_bar   = df_5m_today.iloc[-1] if has_bars else None
+    last_time  = last_bar.name if last_bar is not None else None
+
+    # Pre-market or no bars yet
+    is_pre = (not has_bars) or (
+        last_time.hour < 9 or (last_time.hour == 9 and last_time.minute < 30)
+    )
+    if is_pre:
+        result["status"] = "pre_market"
+        if last_bar is not None:
+            result["price"] = round(float(last_bar["close"]), 2)
+        return result
+
+    day_bars = df_5m_today.between_time("09:30", "15:55")
+    if len(day_bars) == 0:
+        result["status"] = "pre_market"
+        return result
+
+    day_open = float(day_bars["open"].iloc[0])
+    cur_close = float(day_bars["close"].iloc[-1])
+    result["day_open"] = round(day_open, 2)
+    result["price"]    = round(cur_close, 2)
+
+    # Which zone is today's open above (within 0.5% tolerance)?
+    candidates = [z for z in zones if z["zone_top"] <= day_open * 1.005]
+    if not candidates:
+        result["status"] = "no_zone_nearby"
+        return result
+
+    zone = max(candidates, key=lambda z: z["zone_top"])
+    zt   = zone["zone_top"]
+    result["active_zone"] = zone
+
+    # Scan for first zone touch
+    touch_k = None
+    for k in range(len(day_bars)):
+        if day_bars.iloc[k].name.time() >= CUTOFF_T:
+            break
+        if float(day_bars["low"].iloc[k]) <= zt * 1.002:
+            touch_k = k
+            break
+
+    if touch_k is None:
+        current_t = day_bars.iloc[-1].name.time()
+        if is_post_market or current_t >= CUTOFF_T:
+            result["status"] = "expired"
+        else:
+            result["status"] = "watching_touch"
+        return result
+
+    result["touch_time"] = day_bars.iloc[touch_k].name.strftime("%H:%M")
+
+    if touch_k >= len(day_bars) - 1:
+        result["status"] = "signal"
+        return result
+
+    # Entry bar
+    entry_bar = day_bars.iloc[touch_k + 1]
+    entry     = float(entry_bar["open"])
+    tp        = round(entry + FIXED_TP,   2)
+    sl        = round(entry - FIXED_STOP, 2)
+    result.update(entry=round(entry, 2), tp=tp, sl=sl,
+                  entry_time=entry_bar.name.strftime("%H:%M"))
+
+    # Simulate TP/stop through remaining bars
+    remaining  = day_bars.iloc[touch_k + 1:]
+    outcome    = None
+    exit_price = None
+
+    for k in range(len(remaining)):
+        bar = remaining.iloc[k]
+        if float(bar["low"]) <= sl:
+            outcome, exit_price = "loss", sl
+            break
+        if float(bar["high"]) >= tp:
+            outcome, exit_price = "win", tp
+            break
+
+    if outcome is None:
+        if is_post_market:
+            outcome, exit_price = "eod_exit", cur_close
+        else:
+            outcome, exit_price = "in_trade", cur_close
+
+    result.update(
+        status     = outcome,
+        exit_price = round(exit_price, 2) if exit_price is not None else None,
+        pnl        = round(exit_price - entry, 2) if exit_price is not None else None,
+    )
+    return result
+
 
 def score_gap_fill(ticker, df_5m_today, prior_close, is_post_market=False):
     """
@@ -1317,6 +1530,14 @@ def grade():
         spy_today = spy_today[spy_today.index.date == target_date].copy() if len(spy_today) > 0 else pd.DataFrame()
         vwap_pullback = score_vwap_pullback(spy_today)
 
+        gap_pivot = {sym: compute_gap_pivot_zones(sym) for sym in ("SPY", "QQQ")}
+
+        gap_pivot_live = {}
+        for sym in ("SPY", "QQQ"):
+            df_5m      = gap_fill_5m.get(sym, pd.DataFrame())
+            today_5m   = df_5m[df_5m.index.date == gap_fill_date].copy() if len(df_5m) > 0 else pd.DataFrame()
+            gap_pivot_live[sym] = score_gap_pivot_live(sym, today_5m, gap_pivot[sym], is_post_market)
+
         return jsonify({
             "success": True,
             "timestamp": now_et.strftime("%Y-%m-%d %H:%M:%S ET"),
@@ -1330,6 +1551,8 @@ def grade():
             "gap_fill": gap_fill,
             "pdl_short": pdl_short,
             "vwap_pullback": vwap_pullback,
+            "gap_pivot": gap_pivot,
+            "gap_pivot_live": gap_pivot_live,
         })
 
     except Exception as e:
