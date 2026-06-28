@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -1532,10 +1532,16 @@ def grade():
 
         gap_pivot = {sym: compute_gap_pivot_zones(sym) for sym in ("SPY", "QQQ")}
 
+        # ?as_of=HH:MM truncates bars for testing (e.g. as_of=09:31 simulates just after open)
+        as_of_str = request.args.get("as_of")
+        as_of_time = pd.Timestamp(as_of_str).time() if as_of_str else None
+
         gap_pivot_live = {}
         for sym in ("SPY", "QQQ"):
-            df_5m      = gap_fill_5m.get(sym, pd.DataFrame())
-            today_5m   = df_5m[df_5m.index.date == gap_fill_date].copy() if len(df_5m) > 0 else pd.DataFrame()
+            df_5m    = gap_fill_5m.get(sym, pd.DataFrame())
+            today_5m = df_5m[df_5m.index.date == gap_fill_date].copy() if len(df_5m) > 0 else pd.DataFrame()
+            if as_of_time is not None and len(today_5m) > 0:
+                today_5m = today_5m[today_5m.index.time <= as_of_time]
             gap_pivot_live[sym] = score_gap_pivot_live(sym, today_5m, gap_pivot[sym], is_post_market)
 
         return jsonify({
